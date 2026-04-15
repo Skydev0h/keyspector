@@ -645,6 +645,7 @@ let keepPopupOnRender = false;
 
 function closeCommentPopup() {
   if (activePopup) {
+    if (typeof activePopup._cleanup === 'function') activePopup._cleanup();
     activePopup.remove();
     activePopup = null;
   }
@@ -746,6 +747,17 @@ function showUserContextMenu(event, keyInfo, serverAlias, sd) {
   const popup = document.createElement('div');
   popup.className = 'comment-popup user-context-menu';
 
+  // Track Ctrl-click interactions: if the user clicked anything while holding Ctrl,
+  // release of Ctrl will close the popup (auto-commit).
+  let ctrlActionTaken = false;
+  const onCtrlRelease = (e) => {
+    if (!e.ctrlKey && !e.metaKey && ctrlActionTaken && activePopup === popup) {
+      closeCommentPopup();
+    }
+  };
+  window.addEventListener('keyup', onCtrlRelease);
+  popup._cleanup = () => window.removeEventListener('keyup', onCtrlRelease);
+
   // Helper to (re)build rows from current pending state
   function buildRows() {
     popup.innerHTML = '';
@@ -798,8 +810,15 @@ function showUserContextMenu(event, keyInfo, serverAlias, sd) {
             if (!pendingAdd.get(fp).has(serverAlias)) pendingAdd.get(fp).set(serverAlias, new Set());
             pendingAdd.get(fp).get(serverAlias).add(name);
           }
-          buildRows();
-          render();
+          // Ctrl held: multi-select mode (keep popup open). Otherwise: close after action.
+          if (e.ctrlKey || e.metaKey) {
+            ctrlActionTaken = true; // mark so Ctrl-release closes the popup
+            buildRows();
+            render();
+          } else {
+            closeCommentPopup();
+            render();
+          }
         };
       }
 
