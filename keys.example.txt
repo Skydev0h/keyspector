@@ -1,0 +1,17 @@
+# Key alias database — gives human-readable names to SSH public keys.
+# Format: <ssh-key-line> <alias>
+#   - Standard authorized_keys-style: key-type base64-body [comment/alias]
+#   - The alias is everything after the base64 body
+#   - Separator rows are written as `---` (can be reordered/removed via UI)
+#
+# You don't have to create this file by hand — on first load, Keyspector
+# discovers keys from your servers and shows them with short auto-names.
+# Use the pencil icon in the UI to rename; saves are written here.
+#
+# Lines starting with # and empty lines are ignored.
+
+# Example named keys (replace with your own):
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...REPLACE_WITH_REAL_KEY alice@laptop
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB...REPLACE_WITH_REAL_KEY bob-workstation
+---
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...REPLACE_WITH_REAL_KEY ci-deploy

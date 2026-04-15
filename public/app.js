@@ -1408,15 +1408,16 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // --- Profile tab management ---
+// availableProfiles is an array of { name, count } objects.
 async function loadProfiles() {
   try {
     const resp = await fetch('/api/profiles');
     availableProfiles = await resp.json();
-  } catch { availableProfiles = ['default']; }
+  } catch { availableProfiles = [{ name: 'default', count: 0 }]; }
 
   // Pick up ?profile=X from URL, fall back to default if unknown
   const urlProfile = new URLSearchParams(window.location.search).get('profile');
-  if (urlProfile && availableProfiles.includes(urlProfile)) {
+  if (urlProfile && availableProfiles.some(p => p.name === urlProfile)) {
     currentProfile = urlProfile;
   }
   updateUrlForProfile(); // normalize URL (strips invalid profile, or removes ?profile=default)
@@ -1439,11 +1440,22 @@ function renderProfileTabs() {
   container.innerHTML = '';
   if (availableProfiles.length <= 1) return; // No tabs if only one profile
 
-  for (const name of availableProfiles) {
+  for (const { name, count } of availableProfiles) {
     const tab = document.createElement('span');
     tab.className = 'profile-tab' + (name === currentProfile ? ' active' : '');
-    tab.textContent = name;
     tab.onclick = () => switchProfile(name);
+
+    const label = document.createElement('span');
+    label.textContent = name;
+    tab.appendChild(label);
+
+    if (count > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'profile-count';
+      badge.textContent = String(count);
+      tab.appendChild(badge);
+    }
+
     container.appendChild(tab);
   }
 }

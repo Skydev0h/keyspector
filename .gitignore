@@ -1,5 +1,9 @@
 execution-*.log
 node_modules
 servers/*.txt
+!servers/*.example.txt
 keys.txt
+!keys.example.txt
 settings.json
+.claude/
+dist/

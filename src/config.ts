@@ -22,16 +22,28 @@ export function getServersFile(profile?: string): string {
   return path.join(SERVERS_DIR, `${name}.txt`);
 }
 
-/** List available server profiles (filenames without .txt in servers/ dir) */
-export function listProfiles(): string[] {
-  if (!fs.existsSync(SERVERS_DIR)) return ['default'];
-  const files = fs.readdirSync(SERVERS_DIR)
-    .filter(f => f.endsWith('.txt'))
-    .map(f => f.replace(/\.txt$/, ''));
+/** List available server profiles (filenames without .txt in servers/ dir).
+ *  Excludes `*.example.txt` template files and profiles that parse to 0 servers.
+ *  Returns each profile with its server count for display purposes. */
+export function listProfiles(): { name: string; count: number }[] {
+  if (!fs.existsSync(SERVERS_DIR)) return [{ name: 'default', count: 0 }];
+  const entries: { name: string; count: number }[] = [];
+  for (const f of fs.readdirSync(SERVERS_DIR)) {
+    if (!f.endsWith('.txt') || f.endsWith('.example.txt')) continue;
+    let count = 0;
+    try {
+      count = parseServers(path.join(SERVERS_DIR, f)).length;
+    } catch { continue; }
+    if (count === 0) continue;
+    entries.push({ name: f.replace(/\.txt$/, ''), count });
+  }
   // Ensure 'default' is first, rest alphabetical
-  const sorted = files.filter(f => f !== 'default').sort();
-  if (files.includes('default')) sorted.unshift('default');
-  return sorted.length > 0 ? sorted : ['default'];
+  entries.sort((a, b) => {
+    if (a.name === 'default') return -1;
+    if (b.name === 'default') return 1;
+    return a.name.localeCompare(b.name);
+  });
+  return entries.length > 0 ? entries : [{ name: 'default', count: 0 }];
 }
 
 export function parseServers(filePath: string): ServerConfig[] {

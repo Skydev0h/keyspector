@@ -1,0 +1,16 @@
+# Server profile — one line per server.
+# Format: <alias> <user>@<host>[:<port>]
+#   alias  — short name shown in the column header
+#   user   — SSH username (needs passwordless sudo, or use root directly)
+#   host   — hostname or IP
+#   port   — optional, defaults to 22
+#
+# Lines starting with # and empty lines are ignored.
+#
+# Copy this file to `default.txt` (or any other `<name>.txt`) to create a profile.
+# Multiple `.txt` files in this directory appear as tabs in the UI.
+
+web1    deploy@web1.example.com
+web2    deploy@web2.example.com:2222
+db      admin@db.internal
+bastion root@bastion.example.com:22

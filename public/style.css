@@ -244,7 +244,10 @@ header h1 { font-size: 20px; font-weight: 600; }
 }
 
 .profile-tab {
-  padding: 4px 12px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
@@ -254,6 +257,28 @@ header h1 { font-size: 20px; font-weight: 600; }
   cursor: pointer;
   transition: all 0.15s;
   user-select: none;
+}
+
+.profile-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  min-width: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-radius: 8px;
+  position: relative;
+  top: -1px; /* 1px optical lift above baseline */
+}
+
+.profile-tab.active .profile-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .profile-tab:hover {

@@ -371,6 +371,6 @@ app.post('/api/apply', async (req, res) => {
 app.listen(PORT, () => {
   const profiles = listProfiles();
   console.log(`\n  Keyspector running at http://localhost:${PORT}\n`);
-  console.log(`  Profiles:  ${profiles.join(', ')} (in servers/)`);
+  console.log(`  Profiles:  ${profiles.map(p => `${p.name}(${p.count})`).join(', ')} (in servers/)`);
   console.log(`  Keys file: keys.txt\n`);
 });
