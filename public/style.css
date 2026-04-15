@@ -342,9 +342,7 @@ thead th:first-child {
   width: var(--key-col-width);
   min-width: var(--key-col-width);
   max-width: var(--key-col-width);
-  text-align: left;
-  padding-left: 10px;
-  padding-right: 6px;
+  text-align: center;
   overflow: hidden;
 }
 
@@ -818,12 +816,14 @@ thead th[data-tooltip]:hover::after {
 /* ─── Inline edit ─────────────────────────────────────────────────────── */
 
 .alias-input {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   font-family: inherit;
+  text-align: center;
   border: 1px solid var(--accent);
   border-radius: 3px;
   padding: 1px 4px;
-  width: 140px;
   outline: none;
   background: var(--bg-surface);
   color: var(--text);
@@ -1153,38 +1153,44 @@ tr.category-row td {
 }
 tr.category-row td:first-child { background: transparent !important; border-right: none; }
 
-/* Name area sits at the left, bounded to key column width. Since it's a single
-   non-sticky block inside a colspan'd td, the td stays the exact width of the
-   cumulative columns and does not create phantom columns. */
+/* Name area bounded to key column width. Symmetric horizontal padding so the
+   name is truly centered within the column regardless of the edit pencil
+   (which is absolutely-positioned and does not participate in flex layout). */
 .category-name-area {
   width: var(--key-col-width);
   max-width: var(--key-col-width);
+  /* Match key-row height so the row doesn't shift when the edit input replaces the span */
+  height: 30px;
   border-right: 1px solid var(--border-light);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px 5px 14px;
+  justify-content: center;
+  padding: 0 28px;
   font-weight: 700;
   font-size: 13px;
   color: var(--text);
   background: var(--bg-surface-alt);
   box-sizing: border-box;
   transition: background 0.1s; /* match tbody td so selection (de)highlight is synchronized */
+  position: relative;
 }
 
 .category-name {
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 
 .category-edit {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   cursor: pointer;
   font-size: 12px;
   opacity: 0;
   transition: opacity 0.15s;
-  flex-shrink: 0;
 }
 .category-name-area:hover .category-edit { opacity: 0.6; }
 .category-edit:hover { opacity: 1; }
@@ -1194,6 +1200,7 @@ tr.category-row td:first-child { background: transparent !important; border-righ
   font-size: 13px;
   font-weight: 700;
   font-family: inherit;
+  text-align: center;
   border: 1px solid var(--accent);
   border-radius: 3px;
   padding: 1px 4px;
