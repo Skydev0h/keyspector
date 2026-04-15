@@ -1740,8 +1740,13 @@ function initSelection() {
     if (e.shiftKey) {
       e.preventDefault(); // suppress text selection AND native HTML5 drag
       const wrapRect = tableWrap.getBoundingClientRect();
-      const startContentX = e.clientX - wrapRect.left + tableWrap.scrollLeft;
-      const startContentY = e.clientY - wrapRect.top  + tableWrap.scrollTop;
+      // wrapRect is border-box; absolute-positioned children resolve against
+      // the padding box (inside the border). Subtract border width so the rect
+      // appears directly under the cursor.
+      const borderLeft = tableWrap.clientLeft;
+      const borderTop  = tableWrap.clientTop;
+      const startContentX = e.clientX - wrapRect.left - borderLeft + tableWrap.scrollLeft;
+      const startContentY = e.clientY - wrapRect.top  - borderTop  + tableWrap.scrollTop;
 
       const box = document.createElement('div');
       box.className = 'selection-rect';
@@ -1754,8 +1759,8 @@ function initSelection() {
       document.body.style.userSelect = 'none';
 
       const onMove = (ev) => {
-        const curContentX = ev.clientX - wrapRect.left + tableWrap.scrollLeft;
-        const curContentY = ev.clientY - wrapRect.top  + tableWrap.scrollTop;
+        const curContentX = ev.clientX - wrapRect.left - borderLeft + tableWrap.scrollLeft;
+        const curContentY = ev.clientY - wrapRect.top  - borderTop  + tableWrap.scrollTop;
         box.style.left = Math.min(startContentX, curContentX) + 'px';
         box.style.top  = Math.min(startContentY, curContentY) + 'px';
         box.style.width  = Math.abs(curContentX - startContentX) + 'px';
