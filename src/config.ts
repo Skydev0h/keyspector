@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import type { ServerConfig, KeyAlias, KeySeparatorEntry } from './types.js';
+import type { ServerConfig, KeyAlias, KeySeparatorEntry, KeyCategoryEntry } from './types.js';
 
-export type KeyEntry = KeyAlias | KeySeparatorEntry;
+export type KeyEntry = KeyAlias | KeySeparatorEntry | KeyCategoryEntry;
 
 const KEYS_FILE = path.resolve('keys.txt');
 const SERVERS_DIR = path.resolve('servers');
@@ -159,6 +159,7 @@ export function loadKeyAliases(): KeyEntry[] {
   const entries: KeyEntry[] = [];
   const seenFp = new Set<string>();
   let sepCount = 0;
+  let catCount = 0;
 
   for (const raw of content.split('\n')) {
     const line = raw.trim();
@@ -167,6 +168,14 @@ export function loadKeyAliases(): KeyEntry[] {
     // Separator line
     if (line === '---') {
       entries.push({ isSeparator: true, id: `sep:${sepCount++}`, fullLine: '---' });
+      continue;
+    }
+
+    // Category line: `* <name>`
+    const catMatch = line.match(/^\*\s+(.+)$/);
+    if (catMatch) {
+      const name = catMatch[1].trim();
+      entries.push({ isCategory: true, id: `cat:${catCount++}`, name, fullLine: `* ${name}` });
       continue;
     }
 
@@ -192,7 +201,7 @@ export function loadKeyAliases(): KeyEntry[] {
 
 export function saveKeyAlias(fingerprint: string, alias: string): void {
   const entries = loadKeyAliases();
-  const existing = entries.find(e => !e.isSeparator && (e as KeyAlias).fingerprint === fingerprint) as KeyAlias | undefined;
+  const existing = entries.find(e => !e.isSeparator && !e.isCategory && (e as KeyAlias).fingerprint === fingerprint) as KeyAlias | undefined;
 
   if (existing) {
     existing.alias = alias;
@@ -213,7 +222,7 @@ export function saveKeyAlias(fingerprint: string, alias: string): void {
 
 export function reorderKeys(fingerprints: string[]): void {
   const entries = loadKeyAliases();
-  const onlyKeys = entries.filter(e => !e.isSeparator) as KeyAlias[];
+  const onlyKeys = entries.filter(e => !e.isSeparator && !e.isCategory) as KeyAlias[];
 
   const used = new Set<number>();
   const reordered: KeyAlias[] = [];
@@ -233,8 +242,8 @@ export function reorderKeys(fingerprints: string[]): void {
   console.log(`[config] Reordered ${reordered.length} keys in keys.txt`);
 }
 
-/** Save the full ordered list (keys + separators) back to keys.txt */
-export function saveKeyOrder(entries: Array<{ fp?: string; sep?: boolean }>): void {
+/** Save the full ordered list (keys + separators + categories) back to keys.txt */
+export function saveKeyOrder(entries: Array<{ fp?: string; sep?: boolean; cat?: boolean; catName?: string }>): void {
   const current = loadKeyAliases();
   const keyMap = new Map<string, KeyAlias>();
   for (const e of current) {
@@ -248,6 +257,9 @@ export function saveKeyOrder(entries: Array<{ fp?: string; sep?: boolean }>): vo
   for (const e of entries) {
     if (e.sep) {
       lines.push('---');
+    } else if (e.cat) {
+      const name = String(e.catName || 'Category').trim();
+      lines.push(`* ${name}`);
     } else if (e.fp) {
       const ka = keyMap.get(e.fp);
       if (ka) lines.push(ka.fullLine);
@@ -255,11 +267,11 @@ export function saveKeyOrder(entries: Array<{ fp?: string; sep?: boolean }>): vo
   }
 
   fs.writeFileSync(KEYS_FILE, lines.join('\n') + '\n', 'utf-8');
-  console.log(`[config] Saved key order: ${lines.length} entries (${lines.filter(l => l === '---').length} separators)`);
+  console.log(`[config] Saved key order: ${lines.length} entries (${lines.filter(l => l === '---').length} sep, ${lines.filter(l => l.startsWith('* ')).length} cat)`);
 }
 
 export function resolveKeyAlias(fingerprint: string, knownAliases: KeyEntry[]): KeyAlias {
-  const onlyKeys = knownAliases.filter(e => !e.isSeparator) as KeyAlias[];
+  const onlyKeys = knownAliases.filter(e => !e.isSeparator && !e.isCategory) as KeyAlias[];
   const known = onlyKeys.find(a => a.fingerprint === fingerprint);
   if (known) return known;
 

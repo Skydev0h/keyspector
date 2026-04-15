@@ -14,8 +14,9 @@ export interface KeyAlias {
   alias: string;
   /** Whether alias came from keys.txt (true) or was auto-generated (false) */
   isNamed: boolean;
-  /** Discriminant: always undefined for real keys (KeySeparatorEntry has isSeparator: true) */
+  /** Discriminants: always undefined for real keys */
   isSeparator?: undefined;
+  isCategory?: undefined;
 }
 
 export interface KeyPresence {
@@ -48,14 +49,24 @@ export interface ServerData {
 
 export interface KeySeparatorEntry {
   isSeparator: true;
+  isCategory?: undefined;
   id: string;
   fullLine: '---';
 }
 
+export interface KeyCategoryEntry {
+  isCategory: true;
+  isSeparator?: undefined;
+  id: string;
+  name: string;
+  /** Stored as `* <name>` in keys.txt */
+  fullLine: string;
+}
+
 export interface AppData {
   servers: ServerConfig[];
-  /** All unique keys and separators (keys.txt order first, then unknown server keys) */
-  keys: (KeyAlias | KeySeparatorEntry)[];
+  /** All unique keys, separators, and categories (keys.txt order first, then unknown server keys) */
+  keys: (KeyAlias | KeySeparatorEntry | KeyCategoryEntry)[];
   /** Server data keyed by alias */
   serverData: Record<string, ServerData>;
   /** Aggregated key comment stats: fingerprint → [{comment, count}] sorted by count desc */

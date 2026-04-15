@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { parseServers, loadKeyAliases, saveKeyAlias, resolveKeyAlias, reorderKeys, saveKeyOrder, getServersFile, listProfiles } from './config.js';
 import { fetchServerData, addKey, removeKey } from './ssh.js';
-import type { AppData, PendingAction, KeyAlias, KeySeparatorEntry, ServerData } from './types.js';
+import type { AppData, PendingAction, KeyAlias, KeySeparatorEntry, KeyCategoryEntry, ServerData } from './types.js';
 
 const app = express();
 app.use(express.json());
@@ -83,7 +83,7 @@ async function loadAllData(): Promise<AppData> {
 
   // Build keys list: keys.txt order (with separators), then unknown server keys appended
   const namedFps = new Set(
-    keyAliases.filter(e => !e.isSeparator).map(e => (e as KeyAlias).fingerprint)
+    keyAliases.filter(e => !e.isSeparator && !e.isCategory).map(e => (e as KeyAlias).fingerprint)
   );
   const unknownFps: string[] = [];
   for (const sd of Object.values(cachedServerData)) {
@@ -92,8 +92,12 @@ async function loadAllData(): Promise<AppData> {
     }
   }
 
-  const keys: (KeyAlias | KeySeparatorEntry)[] = [
-    ...keyAliases.map(e => e.isSeparator ? e as KeySeparatorEntry : resolveKeyAlias((e as KeyAlias).fingerprint, keyAliases)),
+  const keys: (KeyAlias | KeySeparatorEntry | KeyCategoryEntry)[] = [
+    ...keyAliases.map(e => {
+      if (e.isSeparator) return e as KeySeparatorEntry;
+      if (e.isCategory) return e as KeyCategoryEntry;
+      return resolveKeyAlias((e as KeyAlias).fingerprint, keyAliases);
+    }),
     ...unknownFps.map(fp => resolveKeyAlias(fp, keyAliases)),
   ];
 
@@ -137,10 +141,12 @@ app.get('/api/stream', async (req, res) => {
   const servers = parseServers(serversFile);
   const keyAliases = loadKeyAliases();
 
-  // Send initial structure immediately (keys from keys.txt incl. separators + server list)
-  const initialKeys = keyAliases.map(e =>
-    e.isSeparator ? e : resolveKeyAlias((e as KeyAlias).fingerprint, keyAliases)
-  );
+  // Send initial structure immediately (keys from keys.txt incl. separators/categories + server list)
+  const initialKeys = keyAliases.map(e => {
+    if (e.isSeparator) return e;
+    if (e.isCategory) return e;
+    return resolveKeyAlias((e as KeyAlias).fingerprint, keyAliases);
+  });
   send('init', { servers, keys: initialKeys });
 
   // Fetch all servers in parallel, stream each result as it arrives
@@ -154,7 +160,7 @@ app.get('/api/stream', async (req, res) => {
       // New keys found on this server not already in keyAliases
       const newKeys: KeyAlias[] = [];
       for (const fp of Object.keys(data.keys)) {
-        if (!keyAliases.find(ka => !ka.isSeparator && (ka as KeyAlias).fingerprint === fp)) {
+        if (!keyAliases.find(ka => !ka.isSeparator && !ka.isCategory && (ka as KeyAlias).fingerprint === fp)) {
           newKeys.push(resolveKeyAlias(fp, keyAliases));
         }
       }
@@ -224,7 +230,7 @@ app.get('/api/refresh-server', async (req, res) => {
   // New keys found on this server
   const newKeys: KeyAlias[] = [];
   for (const fp of Object.keys(data.keys)) {
-    if (!keyAliases.find(ka => !ka.isSeparator && (ka as KeyAlias).fingerprint === fp)) {
+    if (!keyAliases.find(ka => !ka.isSeparator && !ka.isCategory && (ka as KeyAlias).fingerprint === fp)) {
       newKeys.push(resolveKeyAlias(fp, keyAliases));
     }
   }
@@ -247,11 +253,11 @@ app.post('/api/keys', (req, res) => {
 });
 
 // POST /api/reorder — save new key order to keys.txt
-// Body: { entries: [{fp: string} | {sep: true}] }  (supports separators)
+// Body: { entries: [{fp: string} | {sep: true} | {cat: true, catName: string}] }
 //   OR: { fingerprints: string[] }                  (legacy, keys only)
 app.post('/api/reorder', (req, res) => {
   try {
-    const body = req.body as { entries?: Array<{ fp?: string; sep?: boolean }>; fingerprints?: string[] };
+    const body = req.body as { entries?: Array<{ fp?: string; sep?: boolean; cat?: boolean; catName?: string }>; fingerprints?: string[] };
     if (body.entries && Array.isArray(body.entries)) {
       saveKeyOrder(body.entries);
     } else if (body.fingerprints && Array.isArray(body.fingerprints)) {

@@ -46,9 +46,12 @@ let loadingServers = new Set(); // server aliases still being fetched
 // Column filter state: fingerprints of keys whose filter is active
 const activeKeyFilters = new Set();
 
-// Drag-and-drop state (named keys only)
+// Drag-and-drop state (named keys, separators, categories)
 let dragSrcFp = null;
 let dragOverPos = 'before'; // 'before' | 'after'
+
+// After adding a category via drag, auto-enter edit mode on next render
+let pendingCategoryEditId = null;
 
 // Column resize
 let saveSettingsTimer = null;
@@ -295,13 +298,14 @@ function render() {
     headerRow.appendChild(th);
   });
 
-  // Rows: one per key (+ separators); add the "new separator" template before unnamed keys
-  let sepAddRowInserted = false;
+  // Rows: one per key (+ separators + categories); add the "new separator/category" templates before unnamed keys
+  let addRowsInserted = false;
   appData.keys.forEach(keyInfo => {
-    // Insert the sep-add-row before the first unnamed key
-    if (!keyInfo.isSeparator && !keyInfo.isNamed && !sepAddRowInserted) {
+    // Insert the sep-add-row + cat-add-row before the first unnamed key
+    if (!keyInfo.isSeparator && !keyInfo.isCategory && !keyInfo.isNamed && !addRowsInserted) {
       tbody.appendChild(createSepAddRow(visibleServerIndices.length));
-      sepAddRowInserted = true;
+      tbody.appendChild(createCatAddRow(visibleServerIndices.length));
+      addRowsInserted = true;
     }
 
     const tr = document.createElement('tr');
@@ -315,13 +319,13 @@ function render() {
         dragSrcFp = keyInfo.id;
         tr.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
-        document.getElementById('keys-table')?.classList.add('dragging-separator');
+        document.getElementById('keys-table')?.classList.add('dragging-movable');
       });
       tr.addEventListener('dragend', () => {
         dragSrcFp = null;
         document.querySelectorAll('.drag-over-before, .drag-over-after, .dragging')
           .forEach(el => el.classList.remove('drag-over-before', 'drag-over-after', 'dragging'));
-        document.getElementById('keys-table')?.classList.remove('dragging-separator');
+        document.getElementById('keys-table')?.classList.remove('dragging-movable');
       });
       addDropTarget(tr, keyInfo);
 
@@ -331,6 +335,58 @@ function render() {
       tr.appendChild(td);
       tbody.appendChild(tr);
       return; // nothing else to render for separators
+    }
+
+    // ── CATEGORY ROW ───────────────────────────────────────────────────────
+    if (keyInfo.isCategory) {
+      tr.classList.add('category-row', 'draggable-row');
+      tr.draggable = true;
+
+      tr.addEventListener('dragstart', (e) => {
+        dragSrcFp = keyInfo.id;
+        tr.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        document.getElementById('keys-table')?.classList.add('dragging-movable');
+      });
+      tr.addEventListener('dragend', () => {
+        dragSrcFp = null;
+        document.querySelectorAll('.drag-over-before, .drag-over-after, .dragging')
+          .forEach(el => el.classList.remove('drag-over-before', 'drag-over-after', 'dragging'));
+        document.getElementById('keys-table')?.classList.remove('dragging-movable');
+      });
+      addDropTarget(tr, keyInfo);
+
+      const td = document.createElement('td');
+      td.colSpan = visibleServerIndices.length + 1;
+
+      const nameArea = document.createElement('div');
+      nameArea.className = 'category-name-area';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'category-name';
+      nameSpan.textContent = keyInfo.name;
+      nameArea.appendChild(nameSpan);
+
+      const editIcon = document.createElement('span');
+      editIcon.className = 'category-edit';
+      editIcon.textContent = '\u270F\uFE0F'; // ✏️
+      editIcon.title = 'Rename category';
+      editIcon.onclick = (e) => {
+        e.stopPropagation();
+        enterCategoryEditMode(nameSpan, keyInfo);
+      };
+      nameArea.appendChild(editIcon);
+
+      td.appendChild(nameArea);
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+
+      // Auto-enter edit mode if this category was just added via drag
+      if (pendingCategoryEditId === keyInfo.id) {
+        pendingCategoryEditId = null;
+        setTimeout(() => enterCategoryEditMode(nameSpan, keyInfo), 0);
+      }
+      return;
     }
 
     // ── KEY ROW ────────────────────────────────────────────────────────────
@@ -347,7 +403,7 @@ function render() {
         dragSrcFp = null;
         document.querySelectorAll('.drag-over-before, .drag-over-after, .dragging')
           .forEach(el => el.classList.remove('drag-over-before', 'drag-over-after', 'dragging'));
-        document.getElementById('keys-table')?.classList.remove('dragging-separator');
+        document.getElementById('keys-table')?.classList.remove('dragging-movable');
       });
       addDropTarget(tr, keyInfo);
     }
@@ -578,9 +634,10 @@ function render() {
     tbody.appendChild(tr);
   });
 
-  // If all keys are named (no unnamed keys), add the sep-add-row at the very end
-  if (!sepAddRowInserted) {
+  // If all keys are named (no unnamed keys), add the add-rows at the very end
+  if (!addRowsInserted) {
     tbody.appendChild(createSepAddRow(visibleServerIndices.length));
+    tbody.appendChild(createCatAddRow(visibleServerIndices.length));
   }
 
   updatePendingCount();
@@ -1003,48 +1060,65 @@ function resetPending() {
 
 // ─── Separator / reorder helpers ────────────────────────────────────────────
 
-/** POST the full named-entries order (keys + separators) to the server */
+/** Helpers — predicates for the 3 entry types */
+const isMovableEntry = (k) => k.isSeparator || k.isCategory || k.isNamed;
+const isSepOrCat     = (k) => k.isSeparator || k.isCategory;
+
+/** POST the full named-entries order (keys + separators + categories) to the server */
 function saveOrder(namedEntries) {
   fetch('/api/reorder', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      entries: namedEntries.map(e => e.isSeparator ? { sep: true } : { fp: e.fingerprint }),
+      entries: namedEntries.map(e => {
+        if (e.isSeparator) return { sep: true };
+        if (e.isCategory)  return { cat: true, catName: e.name };
+        return { fp: e.fingerprint };
+      }),
     }),
   }).catch(err => console.error('Reorder failed:', err));
+}
+
+/** Look up index in namedEntries for any entry type */
+function findEntryIndex(entries, info) {
+  if (info.isSeparator) return entries.findIndex(e => e.isSeparator && e.id === info.id);
+  if (info.isCategory)  return entries.findIndex(e => e.isCategory  && e.id === info.id);
+  return entries.findIndex(e => !e.isSeparator && !e.isCategory && e.fingerprint === info.fingerprint);
 }
 
 /** Move or insert src entry before/after tgtKeyInfo and persist */
 function handleDrop(tgtKeyInfo, pos) {
   if (!dragSrcFp) return;
 
-  const namedEntries = appData.keys.filter(k => k.isSeparator || k.isNamed);
-  const unnamedKeys  = appData.keys.filter(k => !k.isSeparator && !k.isNamed);
+  const namedEntries = appData.keys.filter(isMovableEntry);
+  const unnamedKeys  = appData.keys.filter(k => !isMovableEntry(k));
 
   let srcEntry;
   if (dragSrcFp === 'sep:new') {
-    // Brand new separator – doesn't exist in the list yet
     srcEntry = { isSeparator: true, id: 'sep:t:' + Date.now(), fullLine: '---' };
+  } else if (dragSrcFp === 'cat:new') {
+    const newId = 'cat:t:' + Date.now();
+    srcEntry = { isCategory: true, id: newId, name: 'New category', fullLine: '* New category' };
+    pendingCategoryEditId = newId; // auto-enter edit mode after render
   } else if (dragSrcFp.startsWith('sep:')) {
-    // Existing separator – remove from its current position
-    const isSameTgt = tgtKeyInfo.isSeparator && tgtKeyInfo.id === dragSrcFp;
-    if (isSameTgt) return;
+    if (tgtKeyInfo.isSeparator && tgtKeyInfo.id === dragSrcFp) return;
     const srcIdx = namedEntries.findIndex(e => e.isSeparator && e.id === dragSrcFp);
+    if (srcIdx === -1) return;
+    [srcEntry] = namedEntries.splice(srcIdx, 1);
+  } else if (dragSrcFp.startsWith('cat:')) {
+    if (tgtKeyInfo.isCategory && tgtKeyInfo.id === dragSrcFp) return;
+    const srcIdx = namedEntries.findIndex(e => e.isCategory && e.id === dragSrcFp);
     if (srcIdx === -1) return;
     [srcEntry] = namedEntries.splice(srcIdx, 1);
   } else {
     // Named key
-    const isSameTgt = !tgtKeyInfo.isSeparator && tgtKeyInfo.fingerprint === dragSrcFp;
-    if (isSameTgt) return;
-    const srcIdx = namedEntries.findIndex(e => !e.isSeparator && e.fingerprint === dragSrcFp);
+    if (!tgtKeyInfo.isSeparator && !tgtKeyInfo.isCategory && tgtKeyInfo.fingerprint === dragSrcFp) return;
+    const srcIdx = namedEntries.findIndex(e => !e.isSeparator && !e.isCategory && e.fingerprint === dragSrcFp);
     if (srcIdx === -1) return;
     [srcEntry] = namedEntries.splice(srcIdx, 1);
   }
 
-  const tgtIdx = tgtKeyInfo.isSeparator
-    ? namedEntries.findIndex(e => e.isSeparator && e.id === tgtKeyInfo.id)
-    : namedEntries.findIndex(e => !e.isSeparator && e.fingerprint === tgtKeyInfo.fingerprint);
-
+  const tgtIdx = findEntryIndex(namedEntries, tgtKeyInfo);
   const insertIdx = tgtIdx === -1 ? namedEntries.length : (pos === 'before' ? tgtIdx : tgtIdx + 1);
   namedEntries.splice(insertIdx, 0, srcEntry);
 
@@ -1054,16 +1128,52 @@ function handleDrop(tgtKeyInfo, pos) {
   render();
 }
 
-/** Delete a separator by id and persist */
-function applyDelete(sepId) {
-  const namedEntries = appData.keys.filter(k => k.isSeparator || k.isNamed);
-  const unnamedKeys  = appData.keys.filter(k => !k.isSeparator && !k.isNamed);
-  const idx = namedEntries.findIndex(e => e.isSeparator && e.id === sepId);
+/** Delete a separator or category by id and persist */
+function applyDelete(entryId) {
+  const namedEntries = appData.keys.filter(isMovableEntry);
+  const unnamedKeys  = appData.keys.filter(k => !isMovableEntry(k));
+  const idx = namedEntries.findIndex(e => isSepOrCat(e) && e.id === entryId);
   if (idx !== -1) namedEntries.splice(idx, 1);
   appData.keys = [...namedEntries, ...unnamedKeys];
   saveOrder(namedEntries);
   dragSrcFp = null;
   render();
+}
+
+/** Enter inline rename mode for a category row */
+function enterCategoryEditMode(nameSpan, categoryInfo) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'category-name-input';
+  input.value = categoryInfo.name;
+
+  nameSpan.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const commit = (shouldSave) => {
+    // Detach handlers FIRST so the synchronous blur-on-remove during render()
+    // doesn't recurse back into this handler (which duplicates the DOM).
+    input.onblur = null;
+    input.onkeydown = null;
+
+    if (shouldSave) {
+      const newName = (input.value || '').trim() || 'Category';
+      if (newName !== categoryInfo.name) {
+        categoryInfo.name = newName;
+        categoryInfo.fullLine = `* ${newName}`;
+        const namedEntries = appData.keys.filter(isMovableEntry);
+        saveOrder(namedEntries);
+      }
+    }
+    render();
+  };
+
+  input.onblur = () => commit(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter')       { e.preventDefault(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+  };
 }
 
 /** Attach dragover / dragleave / drop handlers to a row that acts as a drop target */
@@ -1077,9 +1187,10 @@ function addDropTarget(tr, keyInfo) {
     dragOverPos = pos;
     document.querySelectorAll('.drag-over-before, .drag-over-after')
       .forEach(el => el.classList.remove('drag-over-before', 'drag-over-after'));
-    const isSameSrc = keyInfo.isSeparator
-      ? dragSrcFp === keyInfo.id
-      : dragSrcFp === keyInfo.fingerprint;
+    const isSameSrc =
+      (keyInfo.isSeparator && dragSrcFp === keyInfo.id) ||
+      (keyInfo.isCategory  && dragSrcFp === keyInfo.id) ||
+      (!keyInfo.isSeparator && !keyInfo.isCategory && dragSrcFp === keyInfo.fingerprint);
     if (!isSameSrc) tr.classList.add(`drag-over-${pos}`);
   });
 
@@ -1095,7 +1206,14 @@ function addDropTarget(tr, keyInfo) {
   });
 }
 
-/** Create the "add separator" / "delete separator" template row shown at bottom of named keys */
+/** Returns true if dragSrcFp is an existing (movable) sep or cat — valid drop target for delete */
+function isDragSrcExistingSepOrCat() {
+  if (!dragSrcFp) return false;
+  if (dragSrcFp === 'sep:new' || dragSrcFp === 'cat:new') return false;
+  return dragSrcFp.startsWith('sep:') || dragSrcFp.startsWith('cat:');
+}
+
+/** Create the "add separator" template row; also acts as a delete zone for any sep/cat */
 function createSepAddRow(colCount) {
   const tr = document.createElement('tr');
   tr.classList.add('sep-add-row');
@@ -1108,9 +1226,8 @@ function createSepAddRow(colCount) {
       '<span class="sep-add-label">drag to add separator</span>' +
       '<span class="sep-add-line"></span>' +
     '</div>' +
-    '<div class="sep-delete-hint">✕ drop here to delete separator</div>';
+    '<div class="sep-delete-hint">✕ drop here to delete</div>';
 
-  // Draggable — to create a new separator by dropping it on a row
   tr.draggable = true;
   tr.addEventListener('dragstart', (e) => {
     dragSrcFp = 'sep:new';
@@ -1121,12 +1238,11 @@ function createSepAddRow(colCount) {
     dragSrcFp = null;
     document.querySelectorAll('.drag-over-before, .drag-over-after, .dragging')
       .forEach(el => el.classList.remove('drag-over-before', 'drag-over-after', 'dragging'));
-    document.getElementById('keys-table')?.classList.remove('dragging-separator');
+    document.getElementById('keys-table')?.classList.remove('dragging-movable');
   });
 
-  // Drop target — accepts existing separators for deletion
   tr.addEventListener('dragover', (e) => {
-    if (!dragSrcFp?.startsWith('sep:') || dragSrcFp === 'sep:new') return;
+    if (!isDragSrcExistingSepOrCat()) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     tr.classList.add('drag-over-delete');
@@ -1135,7 +1251,53 @@ function createSepAddRow(colCount) {
     if (!tr.contains(e.relatedTarget)) tr.classList.remove('drag-over-delete');
   });
   tr.addEventListener('drop', (e) => {
-    if (!dragSrcFp?.startsWith('sep:') || dragSrcFp === 'sep:new') return;
+    if (!isDragSrcExistingSepOrCat()) return;
+    e.preventDefault();
+    tr.classList.remove('drag-over-delete');
+    applyDelete(dragSrcFp);
+  });
+
+  tr.appendChild(td);
+  return tr;
+}
+
+/** Create the "add category" template row; also acts as a delete zone for any sep/cat */
+function createCatAddRow(colCount) {
+  const tr = document.createElement('tr');
+  tr.classList.add('cat-add-row');
+
+  const td = document.createElement('td');
+  td.colSpan = colCount + 1;
+  td.innerHTML =
+    '<div class="cat-add-hint">' +
+      '<span class="cat-add-label">★ drag to add category</span>' +
+    '</div>' +
+    '<div class="cat-delete-hint">✕ drop here to delete</div>';
+
+  tr.draggable = true;
+  tr.addEventListener('dragstart', (e) => {
+    dragSrcFp = 'cat:new';
+    tr.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  tr.addEventListener('dragend', () => {
+    dragSrcFp = null;
+    document.querySelectorAll('.drag-over-before, .drag-over-after, .dragging')
+      .forEach(el => el.classList.remove('drag-over-before', 'drag-over-after', 'dragging'));
+    document.getElementById('keys-table')?.classList.remove('dragging-movable');
+  });
+
+  tr.addEventListener('dragover', (e) => {
+    if (!isDragSrcExistingSepOrCat()) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    tr.classList.add('drag-over-delete');
+  });
+  tr.addEventListener('dragleave', (e) => {
+    if (!tr.contains(e.relatedTarget)) tr.classList.remove('drag-over-delete');
+  });
+  tr.addEventListener('drop', (e) => {
+    if (!isDragSrcExistingSepOrCat()) return;
     e.preventDefault();
     tr.classList.remove('drag-over-delete');
     applyDelete(dragSrcFp);
@@ -1299,7 +1461,7 @@ async function refreshServer(alias, serverIndex) {
 
     // Add any new keys discovered
     for (const newKey of (result.newKeys || [])) {
-      if (!appData.keys.find(k => !k.isSeparator && k.fingerprint === newKey.fingerprint)) {
+      if (!appData.keys.find(k => !k.isSeparator && !k.isCategory && k.fingerprint === newKey.fingerprint)) {
         appData.keys.push(newKey);
       }
     }
@@ -1361,7 +1523,7 @@ async function streamData(isReload = false) {
             appData.serverData[data.alias] = data.data;
             // Append new keys discovered on this server (skip separators when checking)
             for (const newKey of (data.newKeys || [])) {
-              if (!appData.keys.find(k => !k.isSeparator && k.fingerprint === newKey.fingerprint)) {
+              if (!appData.keys.find(k => !k.isSeparator && !k.isCategory && k.fingerprint === newKey.fingerprint)) {
                 appData.keys.push(newKey);
               }
             }
@@ -1372,7 +1534,7 @@ async function streamData(isReload = false) {
           } else if (currentEvent === 'done') {
             appData.commentStats = data.commentStats;
             loadingServers = new Set();
-            const keyCount = appData.keys.filter(k => !k.isSeparator).length;
+            const keyCount = appData.keys.filter(k => !k.isSeparator && !k.isCategory).length;
             status.textContent = `${appData.servers.length} servers, ${keyCount} keys`;
             render();
           }

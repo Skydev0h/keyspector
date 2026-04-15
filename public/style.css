@@ -1079,13 +1079,119 @@ tr.sep-add-row:hover td { background: var(--bg-hover); }
   max-width: var(--key-col-width);
 }
 
-/* When dragging an existing separator, switch add-row appearance to delete zone */
-#keys-table.dragging-separator tr.sep-add-row td { background: var(--danger-bg-light) !important; cursor: copy; }
-#keys-table.dragging-separator .sep-add-hint  { display: none; }
-#keys-table.dragging-separator .sep-delete-hint { display: flex; }
+/* When dragging an existing separator or category, both add-rows become delete zones */
+#keys-table.dragging-movable tr.sep-add-row td,
+#keys-table.dragging-movable tr.cat-add-row td { background: var(--danger-bg-light) !important; cursor: copy; }
+#keys-table.dragging-movable .sep-add-hint,
+#keys-table.dragging-movable .cat-add-hint { display: none; }
+/* Only the first (sep) delete hint shows the text; both rows get the red bg so
+   dropping on either is visually "the delete zone" without doubled copy. */
+#keys-table.dragging-movable .sep-delete-hint { display: flex; }
+#keys-table.dragging-movable .cat-delete-hint { display: none; }
 
-tr.sep-add-row.drag-over-delete td {
+tr.sep-add-row.drag-over-delete td,
+tr.cat-add-row.drag-over-delete td {
   background: var(--danger-bg) !important;
   border: 1px dashed var(--danger);
   border-radius: 3px;
+}
+
+/* ─── Category rows ─────────────────────────────────────────────────────── */
+
+tr.category-row td {
+  padding: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--border-light);
+  border-top: 1px solid var(--border-light);
+  border-left: none;
+  cursor: grab;
+}
+tr.category-row td:first-child { background: transparent !important; border-right: none; }
+
+/* Name area sits at the left, bounded to key column width. Since it's a single
+   non-sticky block inside a colspan'd td, the td stays the exact width of the
+   cumulative columns and does not create phantom columns. */
+.category-name-area {
+  width: var(--key-col-width);
+  max-width: var(--key-col-width);
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-surface-alt);
+  box-sizing: border-box;
+}
+
+.category-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-edit {
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.category-name-area:hover .category-edit { opacity: 0.6; }
+.category-edit:hover { opacity: 1; }
+
+.category-name-input {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: var(--bg-surface);
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+}
+
+/* Drop indicators on category rows */
+tr.category-row.drag-over-before td { box-shadow: inset 0 2px 0 var(--accent); }
+tr.category-row.drag-over-after  td { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ─── Add-category template row (mirrors sep-add-row) ─────────────────── */
+
+tr.cat-add-row td {
+  padding: 3px 12px;
+  height: 22px;
+  border-bottom: none;
+  cursor: grab;
+}
+tr.cat-add-row td:first-child { background: var(--bg-surface-alt) !important; border-right: none; }
+tr.cat-add-row:hover td { background: var(--bg-hover); }
+
+.cat-add-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: var(--key-col-width);
+}
+.cat-add-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-weight: 600;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.cat-delete-hint {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--danger-dark);
+  font-weight: 500;
+  max-width: var(--key-col-width);
 }
