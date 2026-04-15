@@ -1097,7 +1097,8 @@ tr.sep-add-row:hover td { background: var(--bg-hover); }
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: var(--key-col-width);
+  /* subtract td horizontal padding (2×12px) so the lines don't extend past the first column */
+  max-width: calc(var(--key-col-width) - 24px);
 }
 .sep-add-line {
   flex: 1;
@@ -1220,8 +1221,10 @@ tr.cat-add-row:hover td { background: var(--bg-hover); }
 .cat-add-hint {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  max-width: var(--key-col-width);
+  /* subtract td horizontal padding so text is centered within the first column */
+  max-width: calc(var(--key-col-width) - 24px);
 }
 .cat-add-label {
   font-size: 10px;
