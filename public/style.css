@@ -311,7 +311,10 @@ header h1 { font-size: 20px; font-weight: 600; }
   flex: 1;
   min-height: 0; /* allow flex shrinking so the wrap (and not the page) scrolls */
   overflow: auto;
-  padding: 12px;
+  /* border (unlike padding) is OUTSIDE the scrollable area — it provides a
+     constant visual gap between sticky anchors and the window edge without
+     letting content leak under it. */
+  border: 12px solid var(--bg-page);
   position: relative; /* containing block for .selection-rect */
 }
 
@@ -1050,7 +1053,14 @@ footer {
 
 /* ─── Separator rows ──────────────────────────────────────────────────── */
 
+/* Separator's td uses colspan — override `tbody td:first-child` sticky/width rules.
+   Sticky behavior goes on .separator-line-inner instead. */
 tr.separator-row td {
+  position: static;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
   padding: 0;
   height: 18px;
   background: transparent;
@@ -1069,8 +1079,11 @@ tr.separator-row td:first-child { background: transparent !important; border-rig
   gap: 6px;
   padding: 0 12px;
   height: 100%;
-  position: relative;
   max-width: var(--key-col-width);
+  /* Grip + lines stay at the left edge during horizontal scroll.
+     The td's border-top/bottom still extends across the whole row width. */
+  position: sticky;
+  left: 0;
 }
 .separator-line-inner::before,
 .separator-line-inner::after {
@@ -1098,6 +1111,11 @@ tr.separator-row.drag-over-after  td { box-shadow: inset 0 -2px 0 var(--accent);
 /* ─── Add-separator template row ──────────────────────────────────────── */
 
 tr.sep-add-row td {
+  position: static;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
   padding: 3px 12px;
   height: 22px;
   border-bottom: none;
@@ -1112,6 +1130,9 @@ tr.sep-add-row:hover td { background: var(--bg-hover); }
   gap: 8px;
   /* subtract td horizontal padding (2×12px) so the lines don't extend past the first column */
   max-width: calc(var(--key-col-width) - 24px);
+  /* Stay at left edge during horizontal scroll */
+  position: sticky;
+  left: 12px;
 }
 .sep-add-line {
   flex: 1;
@@ -1135,6 +1156,8 @@ tr.sep-add-row:hover td { background: var(--bg-hover); }
   color: var(--danger-dark);
   font-weight: 500;
   max-width: var(--key-col-width);
+  position: sticky;
+  left: 12px;
 }
 
 /* When dragging an existing separator or category, both add-rows become delete zones */
@@ -1156,7 +1179,14 @@ tr.cat-add-row.drag-over-delete td {
 
 /* ─── Category rows ─────────────────────────────────────────────────────── */
 
+/* Category row's td uses colspan — override `tbody td:first-child` sticky/width rules.
+   The sticky-left behavior is applied to the inner .category-name-area instead. */
 tr.category-row td {
+  position: static;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
   padding: 0;
   background: transparent;
   border-bottom: 1px solid var(--border-light);
@@ -1185,7 +1215,10 @@ tr.category-row td:first-child { background: transparent !important; border-righ
   background: var(--bg-surface-alt);
   box-sizing: border-box;
   transition: background 0.1s; /* match tbody td so selection (de)highlight is synchronized */
-  position: relative;
+  /* Stay at the left edge during horizontal scroll (same as tbody td:first-child) */
+  position: sticky;
+  left: 0;
+  z-index: 2;
 }
 
 .category-name {
@@ -1230,6 +1263,11 @@ tr.category-row.drag-over-after  td { box-shadow: inset 0 -2px 0 var(--accent); 
 /* ─── Add-category template row (mirrors sep-add-row) ─────────────────── */
 
 tr.cat-add-row td {
+  position: static;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
   padding: 3px 12px;
   height: 22px;
   border-bottom: none;
@@ -1245,6 +1283,9 @@ tr.cat-add-row:hover td { background: var(--bg-hover); }
   gap: 8px;
   /* subtract td horizontal padding so text is centered within the first column */
   max-width: calc(var(--key-col-width) - 24px);
+  /* Stay at left edge during horizontal scroll */
+  position: sticky;
+  left: 12px;
 }
 .cat-add-label {
   font-size: 10px;
@@ -1262,4 +1303,6 @@ tr.cat-add-row:hover td { background: var(--bg-hover); }
   color: var(--danger-dark);
   font-weight: 500;
   max-width: var(--key-col-width);
+  position: sticky;
+  left: 12px;
 }
