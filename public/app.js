@@ -400,10 +400,18 @@ function render() {
       });
       addDropTarget(tr, keyInfo);
 
-      const td = document.createElement('td');
-      td.colSpan = visibleServerIndices.length + 1;
-      td.innerHTML = '<div class="separator-line-inner"><span class="separator-grip">\u283F</span></div>';
-      tr.appendChild(td);
+      // First cell: the sticky "handle" with grip icon
+      const tdFirst = document.createElement('td');
+      tdFirst.innerHTML = '<div class="separator-line-inner"><span class="separator-grip">\u283F</span></div>';
+      tr.appendChild(tdFirst);
+      // One empty cell per visible server column — enables the blue column/cross highlight
+      visibleServerIndices.forEach(si => {
+        const td = document.createElement('td');
+        td.classList.add(`col-${si + 1}`);
+        td.addEventListener('mouseenter', () => setColumnHighlight(si + 1));
+        td.addEventListener('mouseleave', () => setColumnHighlight(-1));
+        tr.appendChild(td);
+      });
       tbody.appendChild(tr);
       return; // nothing else to render for separators
     }
@@ -437,9 +445,8 @@ function render() {
       });
       addDropTarget(tr, keyInfo);
 
-      const td = document.createElement('td');
-      td.colSpan = visibleServerIndices.length + 1;
-
+      // First cell: sticky name area with title + edit icon
+      const tdFirst = document.createElement('td');
       const nameArea = document.createElement('div');
       nameArea.className = 'category-name-area';
 
@@ -458,8 +465,18 @@ function render() {
       };
       nameArea.appendChild(editIcon);
 
-      td.appendChild(nameArea);
-      tr.appendChild(td);
+      tdFirst.appendChild(nameArea);
+      tr.appendChild(tdFirst);
+
+      // One empty cell per visible server column — enables column/cross highlighting
+      visibleServerIndices.forEach(si => {
+        const td = document.createElement('td');
+        td.classList.add(`col-${si + 1}`);
+        td.addEventListener('mouseenter', () => setColumnHighlight(si + 1));
+        td.addEventListener('mouseleave', () => setColumnHighlight(-1));
+        tr.appendChild(td);
+      });
+
       tbody.appendChild(tr);
 
       // Auto-enter edit mode if this category was just added via drag

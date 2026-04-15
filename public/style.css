@@ -425,12 +425,11 @@ tbody td:first-child.col-highlight { background: var(--bg-hover-strong) !importa
 tr.row-selected td { background: var(--bg-selected) !important; }
 tr.row-selected td:first-child { background: var(--bg-selected-strong) !important; cursor: grab; }
 
-/* Separator rows — override the transparent bg and emphasize the lines */
+/* Separator rows — override the transparent bg and emphasize the lines (via box-shadow now) */
 tr.separator-row.row-selected td,
 tr.separator-row.row-selected td:first-child {
   background: var(--bg-selected-strong) !important;
-  border-top-color: var(--accent) !important;
-  border-bottom-color: var(--accent) !important;
+  box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent) !important;
   cursor: grab;
 }
 tr.separator-row.row-selected .separator-grip { color: var(--accent); }
@@ -439,14 +438,13 @@ tr.separator-row.row-selected .separator-line-inner::after {
   background: linear-gradient(to right, transparent, var(--accent) 20%, var(--accent) 80%, transparent);
 }
 
-/* Category rows */
-tr.category-row.row-selected td,
-tr.category-row.row-selected td:first-child {
+/* Category rows — bg now lives on the td directly (name-area is transparent) */
+tr.category-row.row-selected td {
   background: var(--bg-selected) !important;
   cursor: grab;
 }
-tr.category-row.row-selected .category-name-area {
-  background: var(--bg-selected-strong);
+tr.category-row.row-selected td:first-child {
+  background: var(--bg-selected-strong) !important;
 }
 
 /* Selection rectangle overlay */
@@ -1152,30 +1150,26 @@ footer {
 
 /* ─── Separator rows ──────────────────────────────────────────────────── */
 
-/* Separator's td uses colspan — override `tbody td:first-child` sticky/width rules.
-   Sticky behavior goes on .separator-line-inner instead. */
+/* Separator row uses per-column cells (like key rows) so the blue column/cross highlight
+   doesn't break. First cell inherits sticky-left from `tbody td:first-child`; other cells
+   are plain. The horizontal line is drawn via inset box-shadow on each cell — visually
+   continuous since all cells have the same shadow and border-spacing is 0. */
 tr.separator-row td {
-  position: static;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  overflow: visible;
   padding: 0;
   height: 20px;
   background: transparent;
   border: none;
-  border-left: 1px solid var(--border);
-  /* Top/bottom "borders" via inset box-shadow (inside the content area) so the sticky
-     .separator-line-inner can cover the full td height — no cursor flicker on borders. */
   box-shadow: inset 0 1px 0 var(--sep-border), inset 0 -1px 0 var(--sep-border);
-  /* cursor: grab is on .separator-line-inner (the actual grab handle), not the full td */
   cursor: default;
 }
 tr.separator-row:hover td {
-  background: transparent;
   box-shadow: inset 0 1px 0 var(--sep-hover-line), inset 0 -1px 0 var(--sep-hover-line);
 }
-tr.separator-row td:first-child { background: transparent !important; border-right: none; border-left: none; }
+tr.separator-row td:first-child {
+  background: transparent !important;
+  border-right: none;
+  border-left: 1px solid var(--border); /* table left edge */
+}
 
 .separator-line-inner {
   display: flex;
@@ -1183,11 +1177,6 @@ tr.separator-row td:first-child { background: transparent !important; border-rig
   gap: 6px;
   padding: 0 12px;
   height: 100%;
-  max-width: var(--key-col-width);
-  /* Grip + lines stay at the left edge during horizontal scroll.
-     The td's border-top/bottom still extends across the whole row width. */
-  position: sticky;
-  left: 0;
   cursor: grab; /* the actual drag handle for separator rows */
 }
 .separator-line-inner::before,
@@ -1287,33 +1276,28 @@ tr.cat-add-row.drag-over-delete td {
 
 /* Category row's td uses colspan — override `tbody td:first-child` sticky/width rules.
    The sticky-left behavior is applied to the inner .category-name-area instead. */
+/* Category row — per-column cells so column/cross highlight works (same approach as sep) */
 tr.category-row td {
-  position: static;
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  overflow: visible;
   padding: 0;
+  height: 30px;
   background: transparent;
   border: none;
-  /* Top/bottom "borders" via inset box-shadow so the sticky .category-name-area can cover
-     the full td height without 1px cursor flicker on the borders. */
   box-shadow: inset 0 1px 0 var(--border-light), inset 0 -1px 0 var(--border-light);
-  /* cursor: grab is on .category-name-area (the actual grab handle), not the full td */
   cursor: default;
 }
-tr.category-row td:first-child { background: transparent !important; border-right: none; }
+/* First cell carries the "bold" category-label bg directly (not !important) so row-hover,
+   col-highlight, and drag-over indicators can layer on top without the inner div blocking them. */
+tr.category-row td:first-child {
+  background: var(--bg-surface-alt);
+  border-left: 1px solid var(--border);    /* table left edge */
+  border-right: 1px solid var(--border-light); /* vertical boundary between name and data area */
+}
 
 /* Name area bounded to key column width. Symmetric horizontal padding so the
    name is truly centered within the column regardless of the edit pencil
    (which is absolutely-positioned and does not participate in flex layout). */
 .category-name-area {
-  width: var(--key-col-width);
-  max-width: var(--key-col-width);
-  /* Match key-row height so the row doesn't shift when the edit input replaces the span */
-  height: 30px;
-  border-left: 1px solid var(--border);    /* travels with the sticky name area */
-  border-right: 1px solid var(--border-light);
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1321,13 +1305,11 @@ tr.category-row td:first-child { background: transparent !important; border-righ
   font-weight: 700;
   font-size: 13px;
   color: var(--text);
-  background: var(--bg-surface-alt);
+  /* Transparent — the td below supplies the bg so row-hover / col-highlight / drag-over
+     indicators aren't hidden by an opaque inner wrapper. */
+  background: transparent;
   box-sizing: border-box;
-  transition: background 0.1s; /* match tbody td so selection (de)highlight is synchronized */
-  /* Stay at the left edge during horizontal scroll (same as tbody td:first-child) */
-  position: sticky;
-  left: 0;
-  z-index: 2;
+  position: relative; /* so the absolutely-positioned .category-edit anchors here */
   cursor: grab; /* the actual drag handle for category rows */
 }
 
