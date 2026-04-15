@@ -9,6 +9,7 @@
   --bg-hover: #f8f8ff;
   --bg-hover-strong: #f0f0ff;
   --bg-hover-green: #e8ffe8;
+  --bg-hover-red: #ffe8e8;
   --bg-input: #e8e8e8;
   --bg-loading: #e8e8e8;
   --bg-pulse: #ddd;
@@ -77,6 +78,7 @@
     --bg-hover: #252530;
     --bg-hover-strong: #2a2a38;
     --bg-hover-green: #1a2e1a;
+    --bg-hover-red: #2e1a1a;
     --bg-input: #2a2a36;
     --bg-loading: #2a2a36;
     --bg-pulse: #333340;
@@ -145,6 +147,7 @@ html[data-theme="dark"] {
   --bg-hover: #252530;
   --bg-hover-strong: #2a2a38;
   --bg-hover-green: #1a2e1a;
+  --bg-hover-red: #2e1a1a;
   --bg-input: #2a2a36;
   --bg-loading: #2a2a36;
   --bg-pulse: #333340;
@@ -544,8 +547,20 @@ tr.filter-dim td:first-child .key-alias.unnamed { color: var(--text-fainter); }
   transition: background 0.15s;
 }
 
-.cell-empty:hover {
+/* Hover tint on cell background when an add is possible.
+   :not(:has(.badge:hover)) — only tint when mouse is over cell background, not over a specific badge. */
+.cell-can-add-default:hover:not(:has(.badge:hover)) {
   background: var(--bg-hover-green);
+}
+
+/* Ctrl held: suppress green tint (need :not(:has()) too so specificity beats the green rule above) */
+body.ctrl-held .cell-can-add-default:hover:not(:has(.badge:hover)) {
+  background: transparent;
+}
+
+/* Ctrl held: red tint where root can be added */
+body.ctrl-held .cell-can-add-root:hover:not(:has(.badge:hover)) {
+  background: var(--bg-hover-red);
 }
 
 /* ─── Loading state ───────────────────────────────────────────────────── */

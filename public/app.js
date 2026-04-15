@@ -498,42 +498,52 @@ function render() {
         container.className = 'badge-container';
 
         const options = sd?.keyOptions?.[keyInfo.fingerprint] || null;
-        if (users.length > 0) {
-          users.forEach(username => {
-            const badge = createBadge(username, keyInfo.fingerprint, server.alias, false, options);
-            container.appendChild(badge);
-          });
-        }
-
         const addedUsers = pendingAdd.get(keyInfo.fingerprint)?.get(server.alias) || new Set();
-        for (const addedUser of addedUsers) {
-          if (!users.includes(addedUser)) {
-            const badge = createBadge(addedUser, keyInfo.fingerprint, server.alias, true);
-            container.appendChild(badge);
-          }
+
+        // Build unified badge list sorted by UID (root=0 first, then ascending UID)
+        const getUid = (name) => {
+          if (name === 'root') return 0;
+          const u = sd?.users?.find(x => x.name === name);
+          return u ? u.uid : 99999;
+        };
+        const badgeList = [
+          ...users.map(name => ({ name, isAdded: false })),
+          ...Array.from(addedUsers).filter(u => !users.includes(u)).map(name => ({ name, isAdded: true })),
+        ];
+        badgeList.sort((a, b) => getUid(a.name) - getUid(b.name));
+
+        for (const { name, isAdded } of badgeList) {
+          const badge = createBadge(name, keyInfo.fingerprint, server.alias, isAdded, isAdded ? null : options);
+          container.appendChild(badge);
         }
 
         const hasAdded = addedUsers.size > 0;
         if (users.length === 0 && !hasAdded) {
           container.classList.add('cell-empty');
-          container.onclick = () => {
-            const defaultUser = sd?.defaultUser;
-            if (!defaultUser) return;
+        }
+
+        // Determine what can be added (default user without Ctrl, root with Ctrl)
+        const defaultUser = sd?.defaultUser;
+        const hasDefault = defaultUser && (users.includes(defaultUser) || addedUsers.has(defaultUser));
+        const hasRoot = users.includes('root') || addedUsers.has('root');
+        const canAddDefault = sd && defaultUser && !hasDefault;
+        const canAddRoot = sd && !hasRoot;
+
+        if (canAddDefault) container.classList.add('cell-can-add-default');
+        if (canAddRoot) container.classList.add('cell-can-add-root');
+
+        if (canAddDefault || canAddRoot) {
+          container.onclick = (e) => {
+            // Only fire when clicking the container background, not a badge inside
+            if (e.target !== container) return;
+            const useRoot = e.ctrlKey || e.metaKey;
+            const username = useRoot ? 'root' : defaultUser;
+            if (!username) return;
+            if (users.includes(username) || addedUsers.has(username)) return;
             if (!pendingAdd.has(keyInfo.fingerprint)) pendingAdd.set(keyInfo.fingerprint, new Map());
             if (!pendingAdd.get(keyInfo.fingerprint).has(server.alias)) pendingAdd.get(keyInfo.fingerprint).set(server.alias, new Set());
-            pendingAdd.get(keyInfo.fingerprint).get(server.alias).add(defaultUser);
+            pendingAdd.get(keyInfo.fingerprint).get(server.alias).add(username);
             render();
-          };
-        } else if (users.length > 0 && !hasAdded) {
-          container.onclick = (e) => {
-            if (e.target === container) {
-              const defaultUser = sd?.defaultUser;
-              if (!defaultUser || users.includes(defaultUser)) return;
-              if (!pendingAdd.has(keyInfo.fingerprint)) pendingAdd.set(keyInfo.fingerprint, new Map());
-              if (!pendingAdd.get(keyInfo.fingerprint).has(server.alias)) pendingAdd.get(keyInfo.fingerprint).set(server.alias, new Set());
-              pendingAdd.get(keyInfo.fingerprint).get(server.alias).add(defaultUser);
-              render();
-            }
           };
         }
 
@@ -711,7 +721,7 @@ function showUserContextMenu(event, keyInfo, serverAlias, sd) {
   closeCommentPopup();
 
   const fp = keyInfo.fingerprint;
-  const serverUsers = sd.users || [];
+  const serverUsers = [...(sd.users || [])].sort((a, b) => a.uid - b.uid);
   if (serverUsers.length === 0) return;
 
   const existingUsers = sd.keys[fp] || [];
@@ -1368,7 +1378,25 @@ async function loadProfiles() {
     const resp = await fetch('/api/profiles');
     availableProfiles = await resp.json();
   } catch { availableProfiles = ['default']; }
+
+  // Pick up ?profile=X from URL, fall back to default if unknown
+  const urlProfile = new URLSearchParams(window.location.search).get('profile');
+  if (urlProfile && availableProfiles.includes(urlProfile)) {
+    currentProfile = urlProfile;
+  }
+  updateUrlForProfile(); // normalize URL (strips invalid profile, or removes ?profile=default)
   renderProfileTabs();
+}
+
+/** Reflect current profile in URL without navigation */
+function updateUrlForProfile() {
+  const url = new URL(window.location.href);
+  if (currentProfile === 'default') {
+    url.searchParams.delete('profile');
+  } else {
+    url.searchParams.set('profile', currentProfile);
+  }
+  history.replaceState(null, '', url.toString());
 }
 
 function renderProfileTabs() {
@@ -1391,10 +1419,20 @@ function switchProfile(name) {
     if (!confirm('You have unsaved changes. Switch profile and discard them?')) return;
   }
   currentProfile = name;
+  updateUrlForProfile();
   resetPending();
   renderProfileTabs();
   streamData(false);
 }
+
+// Track Ctrl/Meta modifier state on body so CSS can toggle hover colors
+function updateCtrlHeld(e) {
+  document.body.classList.toggle('ctrl-held', !!(e.ctrlKey || e.metaKey));
+}
+window.addEventListener('keydown', updateCtrlHeld);
+window.addEventListener('keyup', updateCtrlHeld);
+window.addEventListener('mousemove', updateCtrlHeld);
+window.addEventListener('blur', () => document.body.classList.remove('ctrl-held'));
 
 // Initial load: settings + profiles, then data
 loadSettings().then(() => {
