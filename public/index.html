@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keyspector</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Keyspector</h1>
+    <span id="status" class="status">Loading...</span>
+    <div id="profile-tabs" class="profile-tabs"></div>
+  </header>
+
+  <div id="table-wrap">
+    <table id="grid">
+      <thead><tr id="header-row"></tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <button id="btn-reload" class="btn">Reload</button>
+    <button id="btn-reset" class="btn">Reset</button>
+    <button id="btn-apply" class="btn btn-primary" disabled>Apply</button>
+    <span id="pending-count"></span>
+    <div id="theme-toggle" class="theme-toggle"></div>
+  </footer>
+
+  <!-- Apply confirmation modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="modal-title">Confirm Actions</h2>
+      <div id="modal-actions" class="modal-actions"></div>
+      <div id="modal-buttons" class="modal-buttons">
+        <button id="modal-confirm" class="btn btn-primary">Confirm</button>
+        <button id="modal-cancel" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
