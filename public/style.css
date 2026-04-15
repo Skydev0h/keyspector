@@ -828,6 +828,29 @@ footer {
   border-color: var(--accent-hover);
 }
 
+/* Hint bar above footer */
+.hint-bar {
+  padding: 6px 20px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-surface-alt);
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+  text-align: center;
+}
+.hint-bar kbd {
+  display: inline-block;
+  padding: 0 5px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  line-height: 1.4;
+}
+
 /* ─── Modal ───────────────────────────────────────────────────────────── */
 
 .modal-overlay {
