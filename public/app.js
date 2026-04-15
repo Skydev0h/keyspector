@@ -77,6 +77,16 @@ function getSelId(keyInfo) {
   return keyInfo.fingerprint;
 }
 
+/** Only allow a drag to start from the row's visual "handle" area (the first column).
+ *  Key rows: first <td>. Separator rows: the sticky .separator-line-inner. Category
+ *  rows: the sticky .category-name-area. Drags started from server data columns are
+ *  rejected — those cells should handle their own clicks (badges, right-click menu). */
+function canInitiateRowDragFrom(tr, target) {
+  if (tr.classList.contains('separator-row')) return !!target.closest('.separator-line-inner');
+  if (tr.classList.contains('category-row'))  return !!target.closest('.category-name-area');
+  return target.closest('td') === tr.firstElementChild;
+}
+
 // Column resize
 let saveSettingsTimer = null;
 
@@ -365,6 +375,12 @@ function render() {
       tr.dataset.selId = keyInfo.id;
       if (selectedIds.has(keyInfo.id)) tr.classList.add('row-selected');
 
+      // Gate drag at mousedown — browser snapshots `draggable` when it decides to initiate
+      // a drag, so flipping it here is authoritative. dragstart's `e.target` is the source
+      // element (the tr itself), not the clicked child, so we can't do a reliable check there.
+      tr.addEventListener('mousedown', (e) => {
+        tr.draggable = canInitiateRowDragFrom(tr, e.target);
+      });
       tr.addEventListener('dragstart', (e) => {
         if (selectedIds.has(keyInfo.id) && selectedIds.size > 1) {
           dragSrcFp = 'group';
@@ -399,6 +415,9 @@ function render() {
       tr.dataset.selId = keyInfo.id;
       if (selectedIds.has(keyInfo.id)) tr.classList.add('row-selected');
 
+      tr.addEventListener('mousedown', (e) => {
+        tr.draggable = canInitiateRowDragFrom(tr, e.target);
+      });
       tr.addEventListener('dragstart', (e) => {
         if (selectedIds.has(keyInfo.id) && selectedIds.size > 1) {
           dragSrcFp = 'group';
@@ -459,6 +478,9 @@ function render() {
       tr.dataset.fp = keyInfo.fingerprint;
       if (selectedIds.has(keyInfo.fingerprint)) tr.classList.add('row-selected');
 
+      tr.addEventListener('mousedown', (e) => {
+        tr.draggable = canInitiateRowDragFrom(tr, e.target);
+      });
       tr.addEventListener('dragstart', (e) => {
         // If this row is part of a multi-selection, start a group drag
         if (selectedIds.has(keyInfo.fingerprint) && selectedIds.size > 1) {

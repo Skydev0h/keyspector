@@ -330,6 +330,11 @@ table {
   border-left: none;
   border-radius: 6px;
   width: max-content;
+  /* Disable text selection table-wide: any stray selection (across headers, first
+     column, etc.) would otherwise let the browser start a native text-drag with a
+     huge ghost that competes with our element drag. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Header */
@@ -453,9 +458,12 @@ tr.category-row.row-selected .category-name-area {
   z-index: 5000;
 }
 
-/* Drag and drop */
-tr.draggable-row td:first-child { cursor: grab; }
-tr.draggable-row td:first-child:active { cursor: grabbing; }
+/* Drag and drop — cursor: grab only on the first cell of key rows.
+   Sep/cat rows put grab cursor on their sticky inner element instead (the real handle). */
+tr.draggable-row:not(.separator-row):not(.category-row) td:first-child { cursor: grab; }
+tr.draggable-row:not(.separator-row):not(.category-row) td:first-child:active { cursor: grabbing; }
+/* user-select: none is set on <table> above, so no text selection / text-drag
+   can happen anywhere in the grid. */
 
 tr.dragging { opacity: 0.35; }
 
@@ -1159,7 +1167,8 @@ tr.separator-row td {
   border-left: 1px solid var(--border);
   border-top: 1px solid var(--sep-border);
   border-bottom: 1px solid var(--sep-border);
-  cursor: grab;
+  /* cursor: grab is on .separator-line-inner (the actual grab handle), not the full td */
+  cursor: default;
 }
 tr.separator-row:hover td { background: transparent; border-top-color: var(--sep-hover-line); border-bottom-color: var(--sep-hover-line); }
 tr.separator-row td:first-child { background: transparent !important; border-right: none; border-left: none; }
@@ -1175,6 +1184,7 @@ tr.separator-row td:first-child { background: transparent !important; border-rig
      The td's border-top/bottom still extends across the whole row width. */
   position: sticky;
   left: 0;
+  cursor: grab; /* the actual drag handle for separator rows */
 }
 .separator-line-inner::before,
 .separator-line-inner::after {
@@ -1284,7 +1294,8 @@ tr.category-row td {
   border-bottom: 1px solid var(--border-light);
   border-top: 1px solid var(--border-light);
   border-left: none; /* left border goes on sticky .category-name-area instead */
-  cursor: grab;
+  /* cursor: grab is on .category-name-area (the actual grab handle), not the full td */
+  cursor: default;
 }
 tr.category-row td:first-child { background: transparent !important; border-right: none; }
 
@@ -1312,6 +1323,7 @@ tr.category-row td:first-child { background: transparent !important; border-righ
   position: sticky;
   left: 0;
   z-index: 2;
+  cursor: grab; /* the actual drag handle for category rows */
 }
 
 .category-name {
