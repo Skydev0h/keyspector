@@ -1296,8 +1296,14 @@ function enterCategoryEditMode(nameSpan, categoryInfo) {
   };
 }
 
-/** Attach dragover / dragleave / drop handlers to a row that acts as a drop target */
+/** Attach dragenter / dragover / dragleave / drop handlers to a row that acts as a drop target.
+ *  BOTH dragenter and dragover must preventDefault for the browser to render the "valid drop"
+ *  cursor. Without dragenter's preventDefault, the 🚫 cursor briefly flashes each time the
+ *  cursor crosses into the element. */
 function addDropTarget(tr, keyInfo) {
+  tr.addEventListener('dragenter', (e) => {
+    if (dragSrcFp) e.preventDefault();
+  });
   tr.addEventListener('dragover', (e) => {
     if (!dragSrcFp) return;
     e.preventDefault();
@@ -1363,6 +1369,9 @@ function createSepAddRow(colCount) {
     document.getElementById('keys-table')?.classList.remove('dragging-movable');
   });
 
+  tr.addEventListener('dragenter', (e) => {
+    if (isDragSrcExistingSepOrCat()) e.preventDefault();
+  });
   tr.addEventListener('dragover', (e) => {
     if (!isDragSrcExistingSepOrCat()) return;
     e.preventDefault();
@@ -1409,6 +1418,9 @@ function createCatAddRow(colCount) {
     document.getElementById('keys-table')?.classList.remove('dragging-movable');
   });
 
+  tr.addEventListener('dragenter', (e) => {
+    if (isDragSrcExistingSepOrCat()) e.preventDefault();
+  });
   tr.addEventListener('dragover', (e) => {
     if (!isDragSrcExistingSepOrCat()) return;
     e.preventDefault();
