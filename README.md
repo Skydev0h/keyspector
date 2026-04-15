@@ -17,7 +17,7 @@ A web UI to inspect and manage SSH `authorized_keys` across many servers at once
 
 ```bash
 npm install
-npx tsx src/server.ts
+npm start
 ```
 
 Then open `http://localhost:3000`.
@@ -65,7 +65,7 @@ Then open `http://localhost:3000`.
 
 - Backend: Node.js + TypeScript + Express + [ssh2](https://github.com/mscdex/ssh2)
 - Frontend: Vanilla HTML/CSS/JS (no bundler, no framework)
-- Single command to run: `npx tsx src/server.ts`
+- Single command to run: `npm start`
 
 ## License
 
