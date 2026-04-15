@@ -217,11 +217,17 @@ html[data-theme="dark"] {
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body {
+  height: 100%;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg-page);
   color: var(--text);
-  min-height: 100vh;
+  /* Body is exactly viewport height via html+body 100%;
+     flex children (header, table-wrap flex:1, hint, footer) split the space.
+     Only #table-wrap overflows internally. */
   display: flex;
   flex-direction: column;
 }
@@ -303,6 +309,7 @@ header h1 { font-size: 20px; font-weight: 600; }
 
 #table-wrap {
   flex: 1;
+  min-height: 0; /* allow flex shrinking so the wrap (and not the page) scrolls */
   overflow: auto;
   padding: 12px;
   position: relative; /* containing block for .selection-rect */
@@ -336,6 +343,7 @@ thead th {
 
 thead th:first-child {
   position: sticky;
+  top: 0;
   left: 0;
   z-index: 3;
   border-left: none;
@@ -664,7 +672,9 @@ td.col-loading {
   background: var(--bg-pulse);
   border-radius: 3px;
   animation: col-pulse 1.4s ease-in-out infinite;
-  margin: 0 auto;
+  /* 7px top + 12px bar + 7px bottom = 26px, matches .badge-container min-height
+     so the row doesn't jump in height when loading finishes. */
+  margin: 7px auto;
 }
 
 /* Error column tinting */
@@ -687,7 +697,10 @@ thead th.server-refreshing {
 
 /* ─── Tooltip ─────────────────────────────────────────────────────────── */
 
-[data-tooltip] { position: relative; }
+/* :where() gives 0 specificity so this doesn't override position: sticky on thead th,
+   but still provides a positioning context for the ::after tooltip on non-positioned
+   elements like .badge. Sticky elements are already positioned, so ::after anchors fine. */
+:where([data-tooltip]) { position: relative; }
 [data-tooltip]:hover {
   /* Lift the element's stacking context above sticky columns and transformed siblings */
   z-index: 9000;
