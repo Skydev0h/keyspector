@@ -11,6 +11,8 @@
   --bg-hover-green: #e8ffe8;
   --bg-hover-red: #ffe8e8;
   --bg-input: #e8e8e8;
+  --bg-selected: #dce8fa;
+  --bg-selected-strong: #c6d9f5;
   --bg-loading: #e8e8e8;
   --bg-pulse: #ddd;
 
@@ -80,6 +82,8 @@
     --bg-hover-green: #1a2e1a;
     --bg-hover-red: #2e1a1a;
     --bg-input: #2a2a36;
+    --bg-selected: #1f2d48;
+    --bg-selected-strong: #2d3d60;
     --bg-loading: #2a2a36;
     --bg-pulse: #333340;
 
@@ -149,6 +153,8 @@ html[data-theme="dark"] {
   --bg-hover-green: #1a2e1a;
   --bg-hover-red: #2e1a1a;
   --bg-input: #2a2a36;
+  --bg-selected: #1f2d48;
+  --bg-selected-strong: #2d3d60;
   --bg-loading: #2a2a36;
   --bg-pulse: #333340;
 
@@ -299,6 +305,7 @@ header h1 { font-size: 20px; font-weight: 600; }
   flex: 1;
   overflow: auto;
   padding: 12px;
+  position: relative; /* containing block for .selection-rect */
 }
 
 table {
@@ -393,6 +400,43 @@ thead th.col-highlight { background: var(--bg-hover-strong) !important; }
 
 /* Keep sticky first column background visible in all states */
 tbody td:first-child.col-highlight { background: var(--bg-hover-strong) !important; }
+
+/* Selected rows (shift+drag rectangle) */
+tr.row-selected td { background: var(--bg-selected) !important; }
+tr.row-selected td:first-child { background: var(--bg-selected-strong) !important; cursor: grab; }
+
+/* Separator rows — override the transparent bg and emphasize the lines */
+tr.separator-row.row-selected td,
+tr.separator-row.row-selected td:first-child {
+  background: var(--bg-selected-strong) !important;
+  border-top-color: var(--accent) !important;
+  border-bottom-color: var(--accent) !important;
+  cursor: grab;
+}
+tr.separator-row.row-selected .separator-grip { color: var(--accent); }
+tr.separator-row.row-selected .separator-line-inner::before,
+tr.separator-row.row-selected .separator-line-inner::after {
+  background: linear-gradient(to right, transparent, var(--accent) 20%, var(--accent) 80%, transparent);
+}
+
+/* Category rows */
+tr.category-row.row-selected td,
+tr.category-row.row-selected td:first-child {
+  background: var(--bg-selected) !important;
+  cursor: grab;
+}
+tr.category-row.row-selected .category-name-area {
+  background: var(--bg-selected-strong);
+}
+
+/* Selection rectangle overlay */
+.selection-rect {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: var(--accent-resize);
+  pointer-events: none;
+  z-index: 5000;
+}
 
 /* Drag and drop */
 tr.draggable-row td:first-child { cursor: grab; }
@@ -1124,6 +1168,7 @@ tr.category-row td:first-child { background: transparent !important; border-righ
   color: var(--text);
   background: var(--bg-surface-alt);
   box-sizing: border-box;
+  transition: background 0.1s; /* match tbody td so selection (de)highlight is synchronized */
 }
 
 .category-name {

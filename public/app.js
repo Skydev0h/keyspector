@@ -53,6 +53,16 @@ let dragOverPos = 'before'; // 'before' | 'after'
 // After adding a category via drag, auto-enter edit mode on next render
 let pendingCategoryEditId = null;
 
+// Multi-select state: set of sel-ids of selected rows (keys, separators, categories)
+// Sel-id is either a fingerprint (for named keys) or a `sep:N` / `cat:N` id.
+const selectedIds = new Set();
+
+/** Return the sel-id for any movable keyInfo entry */
+function getSelId(keyInfo) {
+  if (keyInfo.isSeparator || keyInfo.isCategory) return keyInfo.id;
+  return keyInfo.fingerprint;
+}
+
 // Column resize
 let saveSettingsTimer = null;
 
@@ -314,12 +324,19 @@ function render() {
     if (keyInfo.isSeparator) {
       tr.classList.add('separator-row', 'draggable-row');
       tr.draggable = true;
+      tr.dataset.selId = keyInfo.id;
+      if (selectedIds.has(keyInfo.id)) tr.classList.add('row-selected');
 
       tr.addEventListener('dragstart', (e) => {
-        dragSrcFp = keyInfo.id;
-        tr.classList.add('dragging');
+        if (selectedIds.has(keyInfo.id) && selectedIds.size > 1) {
+          dragSrcFp = 'group';
+          document.querySelectorAll('tr.row-selected').forEach(t => t.classList.add('dragging'));
+        } else {
+          dragSrcFp = keyInfo.id;
+          tr.classList.add('dragging');
+          document.getElementById('keys-table')?.classList.add('dragging-movable');
+        }
         e.dataTransfer.effectAllowed = 'move';
-        document.getElementById('keys-table')?.classList.add('dragging-movable');
       });
       tr.addEventListener('dragend', () => {
         dragSrcFp = null;
@@ -341,12 +358,19 @@ function render() {
     if (keyInfo.isCategory) {
       tr.classList.add('category-row', 'draggable-row');
       tr.draggable = true;
+      tr.dataset.selId = keyInfo.id;
+      if (selectedIds.has(keyInfo.id)) tr.classList.add('row-selected');
 
       tr.addEventListener('dragstart', (e) => {
-        dragSrcFp = keyInfo.id;
-        tr.classList.add('dragging');
+        if (selectedIds.has(keyInfo.id) && selectedIds.size > 1) {
+          dragSrcFp = 'group';
+          document.querySelectorAll('tr.row-selected').forEach(t => t.classList.add('dragging'));
+        } else {
+          dragSrcFp = keyInfo.id;
+          tr.classList.add('dragging');
+          document.getElementById('keys-table')?.classList.add('dragging-movable');
+        }
         e.dataTransfer.effectAllowed = 'move';
-        document.getElementById('keys-table')?.classList.add('dragging-movable');
       });
       tr.addEventListener('dragend', () => {
         dragSrcFp = null;
@@ -393,10 +417,19 @@ function render() {
     if (keyInfo.isNamed) {
       tr.draggable = true;
       tr.classList.add('draggable-row');
+      tr.dataset.selId = keyInfo.fingerprint;
+      tr.dataset.fp = keyInfo.fingerprint;
+      if (selectedIds.has(keyInfo.fingerprint)) tr.classList.add('row-selected');
 
       tr.addEventListener('dragstart', (e) => {
-        dragSrcFp = keyInfo.fingerprint;
-        tr.classList.add('dragging');
+        // If this row is part of a multi-selection, start a group drag
+        if (selectedIds.has(keyInfo.fingerprint) && selectedIds.size > 1) {
+          dragSrcFp = 'group';
+          document.querySelectorAll('tr.row-selected').forEach(t => t.classList.add('dragging'));
+        } else {
+          dragSrcFp = keyInfo.fingerprint;
+          tr.classList.add('dragging');
+        }
         e.dataTransfer.effectAllowed = 'move';
       });
       tr.addEventListener('dragend', () => {
@@ -1093,6 +1126,33 @@ function handleDrop(tgtKeyInfo, pos) {
   const namedEntries = appData.keys.filter(isMovableEntry);
   const unnamedKeys  = appData.keys.filter(k => !isMovableEntry(k));
 
+  // ─── Group drop (multi-selection: can contain keys + separators + categories) ─
+  if (dragSrcFp === 'group') {
+    // Can't drop a group onto one of its own members
+    if (selectedIds.has(getSelId(tgtKeyInfo))) return;
+
+    // Extract all selected entries from namedEntries (preserving their order)
+    const groupEntries = [];
+    for (let i = namedEntries.length - 1; i >= 0; i--) {
+      const e = namedEntries[i];
+      if (selectedIds.has(getSelId(e))) {
+        groupEntries.unshift(e);
+        namedEntries.splice(i, 1);
+      }
+    }
+    if (groupEntries.length === 0) return;
+
+    const tgtIdx = findEntryIndex(namedEntries, tgtKeyInfo);
+    const insertIdx = tgtIdx === -1 ? namedEntries.length : (pos === 'before' ? tgtIdx : tgtIdx + 1);
+    namedEntries.splice(insertIdx, 0, ...groupEntries);
+
+    appData.keys = [...namedEntries, ...unnamedKeys];
+    saveOrder(namedEntries);
+    dragSrcFp = null;
+    render(); // selection persists (still in selectedIds), re-applied on render
+    return;
+  }
+
   let srcEntry;
   if (dragSrcFp === 'sep:new') {
     srcEntry = { isSeparator: true, id: 'sep:t:' + Date.now(), fullLine: '---' };
@@ -1190,7 +1250,9 @@ function addDropTarget(tr, keyInfo) {
     const isSameSrc =
       (keyInfo.isSeparator && dragSrcFp === keyInfo.id) ||
       (keyInfo.isCategory  && dragSrcFp === keyInfo.id) ||
-      (!keyInfo.isSeparator && !keyInfo.isCategory && dragSrcFp === keyInfo.fingerprint);
+      (!keyInfo.isSeparator && !keyInfo.isCategory && dragSrcFp === keyInfo.fingerprint) ||
+      // When dragging a group, hovering over any selected row is "same source"
+      (dragSrcFp === 'group' && selectedIds.has(getSelId(keyInfo)));
     if (!isSameSrc) tr.classList.add(`drag-over-${pos}`);
   });
 
@@ -1486,6 +1548,7 @@ async function streamData(isReload = false) {
   colorIdx = 0;
   appData = { servers: [], keys: [], serverData: {}, commentStats: {} };
   loadingServers = new Set();
+  selectedIds.clear();
 
   try {
     const profileParam = currentProfile !== 'default' ? `?profile=${encodeURIComponent(currentProfile)}` : '';
@@ -1642,6 +1705,99 @@ window.addEventListener('keydown', updateCtrlHeld);
 window.addEventListener('keyup', updateCtrlHeld);
 window.addEventListener('mousemove', updateCtrlHeld);
 window.addEventListener('blur', () => document.body.classList.remove('ctrl-held'));
+
+// ─── Multi-select: Shift+drag rectangle to select rows; group-drag to move ─
+function clearSelection() {
+  if (selectedIds.size === 0) return;
+  selectedIds.clear();
+  document.querySelectorAll('tr.row-selected').forEach(t => t.classList.remove('row-selected'));
+}
+
+function applySelectionFromRect(selRect) {
+  selectedIds.clear();
+  const rows = document.querySelectorAll('tbody tr.draggable-row[data-sel-id]');
+  rows.forEach(tr => {
+    const r = tr.getBoundingClientRect();
+    const overlaps = !(r.right < selRect.left || r.left > selRect.right ||
+                       r.bottom < selRect.top || r.top > selRect.bottom);
+    if (overlaps) selectedIds.add(tr.dataset.selId);
+  });
+  // Apply classes directly without full re-render
+  document.querySelectorAll('tbody tr.draggable-row').forEach(tr => {
+    const id = tr.dataset.selId;
+    tr.classList.toggle('row-selected', !!id && selectedIds.has(id));
+  });
+}
+
+function initSelection() {
+  const tableWrap = document.getElementById('table-wrap');
+  if (!tableWrap) return;
+
+  tableWrap.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // primary button only
+
+    // Shift+drag → rectangle selection
+    if (e.shiftKey) {
+      e.preventDefault(); // suppress text selection AND native HTML5 drag
+      const wrapRect = tableWrap.getBoundingClientRect();
+      const startContentX = e.clientX - wrapRect.left + tableWrap.scrollLeft;
+      const startContentY = e.clientY - wrapRect.top  + tableWrap.scrollTop;
+
+      const box = document.createElement('div');
+      box.className = 'selection-rect';
+      box.style.left = startContentX + 'px';
+      box.style.top  = startContentY + 'px';
+      box.style.width = '0';
+      box.style.height = '0';
+      tableWrap.appendChild(box);
+
+      document.body.style.userSelect = 'none';
+
+      const onMove = (ev) => {
+        const curContentX = ev.clientX - wrapRect.left + tableWrap.scrollLeft;
+        const curContentY = ev.clientY - wrapRect.top  + tableWrap.scrollTop;
+        box.style.left = Math.min(startContentX, curContentX) + 'px';
+        box.style.top  = Math.min(startContentY, curContentY) + 'px';
+        box.style.width  = Math.abs(curContentX - startContentX) + 'px';
+        box.style.height = Math.abs(curContentY - startContentY) + 'px';
+        // Live-update selection as the rectangle grows/shrinks
+        applySelectionFromRect(box.getBoundingClientRect());
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.userSelect = '';
+        box.remove();
+        // Selection was already applied live in onMove
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      return;
+    }
+
+    // Plain mousedown — clear selection unless clicking the "grab area" of a selected row:
+    //   - for key rows: first column (where the name+icons live)
+    //   - for sep/cat rows: any cell (they use colspan so the whole row is grab-area)
+    if (selectedIds.size > 0) {
+      const tr = e.target.closest('tr');
+      const td = e.target.closest('td');
+      const isSelected = tr && tr.classList.contains('row-selected');
+      const isSepOrCatRow = tr && (tr.classList.contains('separator-row') || tr.classList.contains('category-row'));
+      const isFirstCell = tr && td && td === tr.firstElementChild;
+      const isGrabArea = isSepOrCatRow || isFirstCell;
+      if (!(isSelected && isGrabArea)) clearSelection();
+    }
+  });
+
+  // Escape clears selection
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && selectedIds.size > 0) {
+      clearSelection();
+    }
+  });
+}
+
+initSelection();
 
 // Initial load: settings + profiles, then data
 loadSettings().then(() => {
