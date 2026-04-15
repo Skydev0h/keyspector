@@ -1161,16 +1161,20 @@ tr.separator-row td {
   max-width: none;
   overflow: visible;
   padding: 0;
-  height: 18px;
+  height: 20px;
   background: transparent;
-  border-bottom: none;
+  border: none;
   border-left: 1px solid var(--border);
-  border-top: 1px solid var(--sep-border);
-  border-bottom: 1px solid var(--sep-border);
+  /* Top/bottom "borders" via inset box-shadow (inside the content area) so the sticky
+     .separator-line-inner can cover the full td height — no cursor flicker on borders. */
+  box-shadow: inset 0 1px 0 var(--sep-border), inset 0 -1px 0 var(--sep-border);
   /* cursor: grab is on .separator-line-inner (the actual grab handle), not the full td */
   cursor: default;
 }
-tr.separator-row:hover td { background: transparent; border-top-color: var(--sep-hover-line); border-bottom-color: var(--sep-hover-line); }
+tr.separator-row:hover td {
+  background: transparent;
+  box-shadow: inset 0 1px 0 var(--sep-hover-line), inset 0 -1px 0 var(--sep-hover-line);
+}
 tr.separator-row td:first-child { background: transparent !important; border-right: none; border-left: none; }
 
 .separator-line-inner {
@@ -1291,9 +1295,10 @@ tr.category-row td {
   overflow: visible;
   padding: 0;
   background: transparent;
-  border-bottom: 1px solid var(--border-light);
-  border-top: 1px solid var(--border-light);
-  border-left: none; /* left border goes on sticky .category-name-area instead */
+  border: none;
+  /* Top/bottom "borders" via inset box-shadow so the sticky .category-name-area can cover
+     the full td height without 1px cursor flicker on the borders. */
+  box-shadow: inset 0 1px 0 var(--border-light), inset 0 -1px 0 var(--border-light);
   /* cursor: grab is on .category-name-area (the actual grab handle), not the full td */
   cursor: default;
 }
