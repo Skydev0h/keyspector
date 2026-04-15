@@ -1198,9 +1198,13 @@ tr.separator-row:hover .separator-line-inner::after {
 }
 tr.separator-row:hover .separator-grip { color: var(--sep-hover-line); }
 
-/* Drop indicator on separator rows */
-tr.separator-row.drag-over-before td { box-shadow: inset 0 2px 0 var(--accent); }
-tr.separator-row.drag-over-after  td { box-shadow: inset 0 -2px 0 var(--accent); }
+/* Drop indicator on separator rows — preserve the horizontal line shadow on the opposite edge */
+tr.separator-row.drag-over-before td {
+  box-shadow: inset 0 2px 0 var(--accent), inset 0 -1px 0 var(--sep-border);
+}
+tr.separator-row.drag-over-after td {
+  box-shadow: inset 0 1px 0 var(--sep-border), inset 0 -2px 0 var(--accent);
+}
 
 /* ─── Add-separator template row ──────────────────────────────────────── */
 
@@ -1349,8 +1353,13 @@ tr.category-row td:first-child {
 }
 
 /* Drop indicators on category rows */
-tr.category-row.drag-over-before td { box-shadow: inset 0 2px 0 var(--accent); }
-tr.category-row.drag-over-after  td { box-shadow: inset 0 -2px 0 var(--accent); }
+/* Drop indicator on category rows — keep the horizontal line shadow on the opposite edge */
+tr.category-row.drag-over-before td {
+  box-shadow: inset 0 2px 0 var(--accent), inset 0 -1px 0 var(--border-light);
+}
+tr.category-row.drag-over-after td {
+  box-shadow: inset 0 1px 0 var(--border-light), inset 0 -2px 0 var(--accent);
+}
 
 /* ─── Add-category template row (mirrors sep-add-row) ─────────────────── */
 
