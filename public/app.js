@@ -395,39 +395,55 @@ function render() {
     if (keyInfo.isNamed) {
       const fp = keyInfo.fingerprint;
 
-      // Visible servers where key is absent and not yet pending-add
-      const serversWithout = visibleServerIndices
+      // For a given target user ('root' or each server's defaultUser), find visible servers
+      // where that user does not yet have the key (neither confirmed nor pending).
+      const findServersMissing = (useRoot) => visibleServerIndices
         .map(si => appData.servers[si])
         .filter(server => {
           if (loadingServers.has(server.alias)) return false;
           const sd = appData.serverData[server.alias];
           if (!sd) return false;
-          const confirmed = (sd.keys[fp] || []).length > 0;
-          const pendingAlready = (pendingAdd.get(fp)?.get(server.alias)?.size ?? 0) > 0;
+          const username = useRoot ? 'root' : sd.defaultUser;
+          if (!username) return false;
+          const confirmed = (sd.keys[fp] || []).includes(username);
+          const pendingAlready = pendingAdd.get(fp)?.get(server.alias)?.has(username) ?? false;
           return !confirmed && !pendingAlready;
         });
 
+      const missingDefault = findServersMissing(false);
+      const missingRoot = findServersMissing(true);
+
       const addAllIcon = document.createElement('span');
-      addAllIcon.className = 'key-icon';
+      addAllIcon.className = 'key-icon add-all-icon';
       addAllIcon.textContent = '\u2795'; // ➕
-      addAllIcon.title = serversWithout.length > 0
-        ? `Add to ${serversWithout.length} visible server(s) missing this key`
-        : 'Cancel all pending additions for this key';
+      addAllIcon.title =
+        `Add default user to ${missingDefault.length} server(s) | ` +
+        `Ctrl+click: add root to ${missingRoot.length} server(s)`;
       addAllIcon.onclick = (e) => {
         e.stopPropagation();
-        if (serversWithout.length > 0) {
-          // Add to every visible server that doesn't have it yet
+        const useRoot = e.ctrlKey || e.metaKey;
+        const targets = useRoot ? missingRoot : missingDefault;
+
+        if (targets.length > 0) {
           if (!pendingAdd.has(fp)) pendingAdd.set(fp, new Map());
-          for (const server of serversWithout) {
-            const defaultUser = appData.serverData[server.alias]?.defaultUser;
-            if (defaultUser) {
-              if (!pendingAdd.get(fp).has(server.alias)) pendingAdd.get(fp).set(server.alias, new Set());
-              pendingAdd.get(fp).get(server.alias).add(defaultUser);
-            }
+          for (const server of targets) {
+            const username = useRoot ? 'root' : appData.serverData[server.alias]?.defaultUser;
+            if (!username) continue;
+            if (!pendingAdd.get(fp).has(server.alias)) pendingAdd.get(fp).set(server.alias, new Set());
+            pendingAdd.get(fp).get(server.alias).add(username);
           }
         } else {
-          // All visible servers already have it — cancel pending additions only
-          pendingAdd.delete(fp);
+          // No servers to add to — cancel pending additions of that specific user
+          const targetUsername = useRoot ? 'root' : null;
+          const serverMap = pendingAdd.get(fp);
+          if (serverMap) {
+            for (const [alias, userSet] of [...serverMap]) {
+              const u = useRoot ? 'root' : appData.serverData[alias]?.defaultUser;
+              if (u) userSet.delete(u);
+              if (userSet.size === 0) serverMap.delete(alias);
+            }
+            if (serverMap.size === 0) pendingAdd.delete(fp);
+          }
         }
         render();
       };

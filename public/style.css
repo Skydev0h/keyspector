@@ -408,6 +408,17 @@ tr.drag-over-after td { box-shadow: inset 0 -2px 0 0 var(--accent); }
   opacity: 1;
 }
 
+/* Add-all (➕) button: red glow only when Ctrl is held AND hovered */
+.key-icon.add-all-icon {
+  border-radius: 4px;
+  padding: 0 2px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+body.ctrl-held .key-icon.add-all-icon:hover {
+  background: var(--bg-hover-red);
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
 /* Dim rows whose filter is not active when any filter is active */
 tr.filter-dim td:first-child .key-alias { color: var(--text-faint); }
 tr.filter-dim td:first-child .key-alias.unnamed { color: var(--text-fainter); }
