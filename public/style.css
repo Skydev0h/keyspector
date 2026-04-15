@@ -322,7 +322,12 @@ table {
   border-collapse: separate;
   border-spacing: 0;
   background: var(--bg-surface);
+  /* No top/left border on the table itself — these would scroll away when sticky
+     thead/first-column take over. We put those edges directly on the sticky cells
+     instead so they remain visible at all scroll positions. */
   border: 1px solid var(--border);
+  border-top: none;
+  border-left: none;
   border-radius: 6px;
   width: max-content;
 }
@@ -333,6 +338,7 @@ thead th {
   top: 0;
   z-index: 2;
   background: var(--bg-surface-alt);
+  border-top: 1px solid var(--border);       /* top edge that stays with sticky thead */
   border-bottom: 2px solid var(--border);
   border-left: 1px solid var(--border-lighter);
   padding: 8px 6px;
@@ -349,7 +355,7 @@ thead th:first-child {
   top: 0;
   left: 0;
   z-index: 3;
-  border-left: none;
+  border-left: 1px solid var(--border);      /* left edge that stays with sticky first column */
   width: var(--key-col-width);
   min-width: var(--key-col-width);
   max-width: var(--key-col-width);
@@ -377,7 +383,7 @@ tbody td:first-child {
   left: 0;
   z-index: 2;
   background: var(--bg-surface);
-  border-left: none;
+  border-left: 1px solid var(--border);   /* left edge that stays with sticky first column */
   border-right: 1px solid var(--border-light);
   padding: 4px 6px 4px 10px;
   font-size: 12px;
@@ -1065,7 +1071,7 @@ tr.separator-row td {
   height: 18px;
   background: transparent;
   border-bottom: none;
-  border-left: none;
+  border-left: 1px solid var(--border);
   border-top: 1px solid var(--sep-border);
   border-bottom: 1px solid var(--sep-border);
   cursor: grab;
@@ -1119,6 +1125,7 @@ tr.sep-add-row td {
   padding: 3px 12px;
   height: 22px;
   border-bottom: none;
+  border-left: none;
   cursor: grab;
 }
 tr.sep-add-row td:first-child { background: var(--bg-surface-alt) !important; border-right: none; }
@@ -1191,7 +1198,7 @@ tr.category-row td {
   background: transparent;
   border-bottom: 1px solid var(--border-light);
   border-top: 1px solid var(--border-light);
-  border-left: none;
+  border-left: none; /* left border goes on sticky .category-name-area instead */
   cursor: grab;
 }
 tr.category-row td:first-child { background: transparent !important; border-right: none; }
@@ -1204,6 +1211,7 @@ tr.category-row td:first-child { background: transparent !important; border-righ
   max-width: var(--key-col-width);
   /* Match key-row height so the row doesn't shift when the edit input replaces the span */
   height: 30px;
+  border-left: 1px solid var(--border);    /* travels with the sticky name area */
   border-right: 1px solid var(--border-light);
   display: flex;
   align-items: center;
@@ -1271,6 +1279,7 @@ tr.cat-add-row td {
   padding: 3px 12px;
   height: 22px;
   border-bottom: none;
+  border-left: none;
   cursor: grab;
 }
 tr.cat-add-row td:first-child { background: var(--bg-surface-alt) !important; border-right: none; }
