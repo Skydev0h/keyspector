@@ -43,6 +43,14 @@ export interface ServerData {
   keyComments: Record<string, string>;
   /** Map: fingerprint → options prefix (command="...",no-pty,...) if present */
   keyOptions: Record<string, string>;
+  /** Raw AuthorizedKeysFile pattern list from sshd_config (global context) */
+  authKeysPatterns: string[];
+  /** Per user: list of authorized_keys files that actually exist, in pattern order (first = primary). */
+  authKeysFiles: Record<string, string[]>;
+  /** Per user: the "primary" (first pattern, expanded) path — used as add-target when no file exists yet. */
+  authKeysPrimary: Record<string, string>;
+  /** Per (fingerprint, user): list of files where this key currently lives. */
+  keyFiles: Record<string, Record<string, string[]>>;
   /** Error if server was unreachable */
   error?: string;
 }
@@ -81,6 +89,12 @@ export interface PendingAction {
   username: string;
   serverAlias: string;
   serverConfig: ServerConfig;
+  /** For `add`: the file the frontend expects sshd to pick as target (first existing or primary).
+      Backend verifies its own resolution matches and refuses if it diverges. */
+  expectedTargetPath?: string;
+  /** For `remove`: exact files the frontend believes contain the key.
+      Backend verifies each is a valid sshd AuthorizedKeysFile and that the key is actually there. */
+  expectedSourcePaths?: string[];
 }
 
 export interface ActionResult {

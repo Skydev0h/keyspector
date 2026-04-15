@@ -272,6 +272,48 @@ app.post('/api/reorder', (req, res) => {
   }
 });
 
+// POST /api/preflight — dry-run: resolve paths and verify expectations WITHOUT modifying anything.
+// Body: { actions: PendingAction[], profile?: string }
+// Response: { results: { index, status: 'ok'|'error', error?, errorKind? }[] }
+app.post('/api/preflight', async (req, res) => {
+  const actions: PendingAction[] = req.body.actions ?? [];
+  const profile = req.body.profile || undefined;
+  const servers = parseServers(getServersFile(profile));
+
+  console.log(`[api] POST /api/preflight (${actions.length} action(s))`);
+
+  const results = await Promise.all(actions.map(async (action, index) => {
+    const serverConfig = servers.find(s => s.alias === action.serverAlias);
+    if (!serverConfig) {
+      return { index, status: 'error' as const, error: `Server ${action.serverAlias} not found`, errorKind: 'server-not-found' };
+    }
+    try {
+      if (action.type === 'add') {
+        const r = await addKey(serverConfig, action.username, action.fingerprint, action.fullKeyLine, {
+          expectedTargetPath: action.expectedTargetPath,
+          dryRun: true,
+        });
+        if (r.status === 'already-present') {
+          return { index, status: 'info' as const, infoKind: 'already-present', detail: r.path };
+        }
+        return { index, status: 'ok' as const };
+      } else {
+        await removeKey(serverConfig, action.username, action.fingerprint, {
+          expectedSourcePaths: action.expectedSourcePaths,
+          dryRun: true,
+        });
+        return { index, status: 'ok' as const };
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || String(err);
+      const errorKind = (err as { kind?: string }).kind ?? 'exec';
+      return { index, status: 'error' as const, error: errorMsg, errorKind };
+    }
+  }));
+
+  res.json({ results });
+});
+
 // POST /api/apply — apply pending changes via SSE
 app.post('/api/apply', async (req, res) => {
   const actions: PendingAction[] = req.body.actions;
@@ -314,7 +356,7 @@ app.post('/api/apply', async (req, res) => {
   const runAction = async (action: PendingAction, index: number) => {
     const serverConfig = servers.find(s => s.alias === action.serverAlias);
     if (!serverConfig) {
-      sendEvent({ index, status: 'error', error: `Server ${action.serverAlias} not found` });
+      sendEvent({ index, status: 'error', error: `Server ${action.serverAlias} not found`, errorKind: 'server-not-found' });
       log(`Action ${index + 1}: ERROR - Server ${action.serverAlias} not found`);
       return;
     }
@@ -322,16 +364,74 @@ app.post('/api/apply', async (req, res) => {
     log(`Action ${index + 1}: executing...`);
     try {
       if (action.type === 'add') {
-        await addKey(serverConfig, action.username, action.fullKeyLine);
+        const r = await addKey(serverConfig, action.username, action.fingerprint, action.fullKeyLine, {
+          expectedTargetPath: action.expectedTargetPath,
+        });
+        if (r.status === 'already-present') {
+          sendEvent({ index, status: 'info', infoKind: 'already-present', detail: r.path });
+          log(`Action ${index + 1}: ALREADY PRESENT at ${r.path}`);
+        } else {
+          sendEvent({ index, status: 'success', detail: r.path });
+          log(`Action ${index + 1}: SUCCESS (→ ${r.path})`);
+        }
       } else {
-        await removeKey(serverConfig, action.username, action.fingerprint);
+        await removeKey(serverConfig, action.username, action.fingerprint, {
+          expectedSourcePaths: action.expectedSourcePaths,
+        });
+        sendEvent({ index, status: 'success' });
+        log(`Action ${index + 1}: SUCCESS`);
       }
-      sendEvent({ index, status: 'success' });
-      log(`Action ${index + 1}: SUCCESS`);
     } catch (err: any) {
       const errorMsg = err.message || String(err);
-      sendEvent({ index, status: 'error', error: errorMsg });
-      log(`Action ${index + 1}: ERROR - ${errorMsg}`);
+      const errorKind = (err as { kind?: string }).kind ?? 'exec';
+      sendEvent({ index, status: 'error', error: errorMsg, errorKind });
+      log(`Action ${index + 1}: ERROR (${errorKind}) - ${errorMsg}`);
+    }
+  };
+
+  // Track error indices so we can gate barrier crossings / final completion.
+  const erroredIndices = new Set<number>();
+  const originalSendEvent = sendEvent;
+  const sendEventTracked = (data: any) => {
+    if (data.status === 'error' && typeof data.index === 'number') erroredIndices.add(data.index);
+    originalSendEvent(data);
+  };
+  // Swap in the tracking emitter for runAction.
+  (runAction as any); // no-op TS widening; runAction already captures `sendEvent`.
+
+  // We need runAction to see the tracked emitter. Since the closure above already bound
+  // `sendEvent`, re-declare it here would be awkward — instead wrap by redefining.
+  const runActionTracked = async (action: PendingAction, index: number) => {
+    const serverConfig = servers.find(s => s.alias === action.serverAlias);
+    if (!serverConfig) {
+      sendEventTracked({ index, status: 'error', error: `Server ${action.serverAlias} not found`, errorKind: 'server-not-found' });
+      return;
+    }
+    sendEventTracked({ index, status: 'running' });
+    try {
+      if (action.type === 'add') {
+        const r = await addKey(serverConfig, action.username, action.fingerprint, action.fullKeyLine, {
+          expectedTargetPath: action.expectedTargetPath,
+        });
+        if (r.status === 'already-present') {
+          sendEventTracked({ index, status: 'info', infoKind: 'already-present', detail: r.path });
+          log(`Action ${index + 1}: ALREADY PRESENT at ${r.path}`);
+        } else {
+          sendEventTracked({ index, status: 'success', detail: r.path });
+          log(`Action ${index + 1}: SUCCESS (→ ${r.path})`);
+        }
+      } else {
+        await removeKey(serverConfig, action.username, action.fingerprint, {
+          expectedSourcePaths: action.expectedSourcePaths,
+        });
+        sendEventTracked({ index, status: 'success' });
+        log(`Action ${index + 1}: SUCCESS`);
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || String(err);
+      const errorKind = (err as { kind?: string }).kind ?? 'exec';
+      sendEventTracked({ index, status: 'error', error: errorMsg, errorKind });
+      log(`Action ${index + 1}: ERROR (${errorKind}) - ${errorMsg}`);
     }
   };
 
@@ -342,11 +442,10 @@ app.post('/api/apply', async (req, res) => {
     const removePhase = actions.map((a, i) => ({ action: a, index: i })).filter(x => x.action.type === 'remove');
 
     const runPhase = async (phase: { action: PendingAction; index: number }[]) => {
-      // Per-server chain: map serverAlias → last promise for that server
       const serverChains = new Map<string, Promise<void>>();
       const phasePromises = phase.map(({ action, index }) => {
         const prev = serverChains.get(action.serverAlias) ?? Promise.resolve();
-        const next = prev.then(() => runAction(action, index));
+        const next = prev.then(() => runActionTracked(action, index));
         serverChains.set(action.serverAlias, next);
         return next;
       });
@@ -355,12 +454,32 @@ app.post('/api/apply', async (req, res) => {
 
     log(`Phase 1: ${addPhase.length} additions`);
     await runPhase(addPhase);
-    log(`Phase 2: ${removePhase.length} removals`);
-    await runPhase(removePhase);
+
+    // Halt barrier: any error in the add phase aborts the remove phase entirely.
+    // After preflight passes, runtime errors are unexpected (concurrent state drift, SSH issues) —
+    // safest to stop rather than risk partial apply.
+    if (erroredIndices.size > 0 && removePhase.length > 0) {
+      const skippedIdx = removePhase.map(x => x.index);
+      sendEventTracked({ phase: 'halted', errors: erroredIndices.size, skipped: skippedIdx, reason: 'add-phase-failed' });
+      log(`HALTED: ${erroredIndices.size} error(s) in add phase — skipping ${skippedIdx.length} removal(s)`);
+    } else {
+      log(`Phase 2: ${removePhase.length} removals`);
+      await runPhase(removePhase);
+    }
   } else {
-    // Sequential execution
+    // Sequential: stop at the first error.
     for (let i = 0; i < actions.length; i++) {
-      await runAction(actions[i], i);
+      const errCountBefore = erroredIndices.size;
+      await runActionTracked(actions[i], i);
+      if (erroredIndices.size > errCountBefore) {
+        const skippedIdx: number[] = [];
+        for (let j = i + 1; j < actions.length; j++) skippedIdx.push(j);
+        if (skippedIdx.length > 0) {
+          sendEventTracked({ phase: 'halted', errors: erroredIndices.size, skipped: skippedIdx, reason: `error-at-action-${i}` });
+        }
+        log(`HALTED at action ${i + 1}: ${skippedIdx.length} remaining action(s) skipped`);
+        break;
+      }
     }
   }
 

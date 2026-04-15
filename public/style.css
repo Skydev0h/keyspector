@@ -982,6 +982,7 @@ footer {
 
 .modal-action {
   display: flex;
+  flex-wrap: wrap;           /* path-line / error-detail break to a new row below */
   align-items: center;
   gap: 10px;
   padding: 8px 0;
@@ -1036,11 +1037,95 @@ footer {
   font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
-  margin-right: auto;
   user-select: none;
 }
 .parallel-label input[type="checkbox"] {
   cursor: pointer;
+}
+
+/* Left-side group in the modal footer (checkboxes + preflight) */
+.modal-left-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-right: auto;
+  flex-wrap: wrap;
+}
+
+.btn.btn-sm {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+/* Path line below each action in the apply modal */
+.action-path-line {
+  width: 100%;                /* force onto its own row in the flex-wrap container */
+  margin-top: 2px;
+  padding-left: 30px;         /* align with action-text, past the icon */
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Info detail below an action — e.g. "identical key already exists at /path" (no-op, not blocking) */
+.action-info-detail {
+  width: 100%;
+  margin-top: 4px;
+  margin-left: 30px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--accent);
+  background: var(--bg-hover-strong);
+  font-size: 11px;
+  color: var(--accent-hover);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 0 3px 3px 0;
+  box-sizing: border-box;
+}
+
+/* Error detail below an action on preflight/runtime failure */
+.action-error-detail {
+  width: 100%;                /* force onto its own row */
+  margin-top: 4px;
+  margin-left: 30px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--danger);
+  background: var(--danger-bg-light);
+  font-size: 11px;
+  color: var(--danger-dark);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 0 3px 3px 0;
+  box-sizing: border-box;
+}
+
+/* Barrier notice between add and remove phases */
+.phase-barrier-notice {
+  margin: 12px 0;
+  padding: 6px 12px;
+  background: var(--restricted-header-bg);
+  border-left: 3px solid var(--restricted-opt-flag);
+  color: var(--restricted-header-text);
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 0 3px 3px 0;
+}
+
+/* Halted: stronger red-accented version */
+.phase-barrier-notice.phase-halted-notice {
+  background: var(--danger-bg-light);
+  border-left-color: var(--danger);
+  color: var(--danger-dark);
+}
+
+/* Skipped-action text — muted since it's just informational */
+.action-error-detail.action-skip-detail {
+  border-left-color: var(--text-muted);
+  background: var(--bg-surface-alt);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 /* ─── Server error indicator ──────────────────────────────────────────── */

@@ -13,6 +13,20 @@ const pendingRemove = new Map();
 /** @type {Map<string, Map<string, string>>} pending additions: fingerprint → serverAlias → username */
 const pendingAdd = new Map();
 
+/** Delete a (fp, serverAlias, username) tuple from a pending map AND prune empty containers.
+ *  Pruning matters because JS Map iteration order is insertion order — if we kept empty
+ *  shells around, re-adding the same pair would land in the old slot and the modal would
+ *  list actions in first-ever-added order instead of most-recent-add order. */
+function removePending(map, fp, serverAlias, username) {
+  const serverMap = map.get(fp);
+  if (!serverMap) return;
+  const userSet = serverMap.get(serverAlias);
+  if (!userSet) return;
+  userSet.delete(username);
+  if (userSet.size === 0) serverMap.delete(serverAlias);
+  if (serverMap.size === 0) map.delete(fp);
+}
+
 /** Color palette for user badges */
 const USER_COLORS = [
   '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6',
@@ -190,6 +204,23 @@ function hasPendingChanges() {
   return false;
 }
 
+/** Resolve the target authorized_keys file for an add action (matches backend logic). */
+function resolveAddTargetPath(serverAlias, username) {
+  const sd = appData?.serverData?.[serverAlias];
+  if (!sd) return undefined;
+  const existing = sd.authKeysFiles?.[username] ?? [];
+  if (existing.length > 0) return existing[0];        // first existing — backend also picks this
+  return sd.authKeysPrimary?.[username];              // no file exists — primary (first pattern) will be created
+}
+
+/** Resolve the source files for a remove action (where the key actually lives). */
+function resolveRemoveSourcePaths(serverAlias, username, fingerprint) {
+  const sd = appData?.serverData?.[serverAlias];
+  if (!sd) return undefined;
+  const files = sd.keyFiles?.[fingerprint]?.[username];
+  return files && files.length > 0 ? files.slice() : undefined;
+}
+
 function collectActions() {
   const actions = [];
   if (!appData) return actions;
@@ -208,6 +239,7 @@ function collectActions() {
           fullKeyLine: keyInfo?.fullLine || fp,
           username,
           serverAlias,
+          expectedTargetPath: resolveAddTargetPath(serverAlias, username),
         });
       }
     }
@@ -225,12 +257,18 @@ function collectActions() {
           fullKeyLine: keyInfo?.fullLine || fp,
           username,
           serverAlias,
+          expectedSourcePaths: resolveRemoveSourcePaths(serverAlias, username, fp),
         });
       }
     }
   }
 
   return actions;
+}
+
+/** Is this path "the default" ~/.ssh/authorized_keys (hide from non-detailed view)? */
+function isStandardAuthKeysPath(path) {
+  return typeof path === 'string' && /\/.ssh\/authorized_keys$/.test(path);
 }
 
 function updatePendingCount() {
@@ -703,16 +741,16 @@ function createBadge(username, fingerprint, serverAlias, isAdded, options) {
     badge.classList.add('pending-add');
     badge.onclick = (e) => {
       e.stopPropagation();
-      // Cancel addition for this specific user
-      pendingAdd.get(fingerprint)?.get(serverAlias)?.delete(username);
+      // Cancel addition for this specific user (prune empty containers)
+      removePending(pendingAdd, fingerprint, serverAlias, username);
       render();
     };
   } else if (isRemoved) {
     badge.classList.add('pending-remove');
     badge.onclick = (e) => {
       e.stopPropagation();
-      // Cancel removal
-      pendingRemove.get(fingerprint)?.get(serverAlias)?.delete(username);
+      // Cancel removal (prune empty containers)
+      removePending(pendingRemove, fingerprint, serverAlias, username);
       render();
     };
   } else {
@@ -892,9 +930,9 @@ function showUserContextMenu(event, keyInfo, serverAlias, sd) {
             if (!pendingRemove.get(fp).has(serverAlias)) pendingRemove.get(fp).set(serverAlias, new Set());
             pendingRemove.get(fp).get(serverAlias).add(name);
           } else if (hasKey && isPendingRemove) {
-            pendingRemove.get(fp)?.get(serverAlias)?.delete(name);
+            removePending(pendingRemove, fp, serverAlias, name);
           } else if (!hasKey && isPendingAdd) {
-            pendingAdd.get(fp)?.get(serverAlias)?.delete(name);
+            removePending(pendingAdd, fp, serverAlias, name);
           } else if (!hasKey && !isPendingAdd) {
             if (!pendingAdd.has(fp)) pendingAdd.set(fp, new Map());
             if (!pendingAdd.get(fp).has(serverAlias)) pendingAdd.get(fp).set(serverAlias, new Set());
@@ -1374,9 +1412,80 @@ function escapeHtml(str) {
 }
 
 // Apply flow
+/** Per-action preflight results (index → { status: 'ok'|'error', error?, errorKind? }) */
+let preflightResults = {};
+
+/** Render/update the path-detail line on an action row. Called on initial render and on
+ *  "Show path details" checkbox change. */
+function renderActionPathLine(div, action, showAll) {
+  // Clean any previous path line
+  const existing = div.querySelector('.action-path-line');
+  if (existing) existing.remove();
+
+  let pathText = '';
+  if (action.type === 'add') {
+    const p = action.expectedTargetPath;
+    if (p && (showAll || !isStandardAuthKeysPath(p))) pathText = `\u2192 ${p}`;
+  } else {
+    const ps = action.expectedSourcePaths || [];
+    if (ps.length > 0) {
+      const anyNonStd = ps.some(p => !isStandardAuthKeysPath(p));
+      if (showAll || anyNonStd) pathText = `\u2190 ${ps.join(', ')}`;
+    }
+  }
+  if (!pathText) return;
+
+  const line = document.createElement('div');
+  line.className = 'action-path-line';
+  line.textContent = pathText;
+  div.appendChild(line);
+}
+
+/** Render the preflight/runtime result for an action (icon + optional error/info text). */
+function renderActionResult(div, result) {
+  const iconEl = div.querySelector('.action-icon');
+  // Remove any previously-attached detail boxes
+  div.querySelectorAll('.action-error-detail, .action-info-detail').forEach(e => e.remove());
+
+  if (!result) {
+    iconEl.textContent = '\u23F3'; // hourglass
+    return;
+  }
+
+  if (result.status === 'ok') {
+    iconEl.textContent = '\uD83C\uDD97'; // 🆗
+  } else if (result.status === 'running') {
+    iconEl.innerHTML = '<span class="spinner"></span>';
+  } else if (result.status === 'success') {
+    iconEl.textContent = '\u2705'; // ✅
+  } else if (result.status === 'info') {
+    iconEl.textContent = '\u2139\uFE0F'; // ℹ️
+    if (result.detail) {
+      const info = document.createElement('div');
+      info.className = 'action-info-detail';
+      const label = result.infoKind === 'already-present'
+        ? 'identical key already exists at'
+        : (result.infoKind ? `[${result.infoKind}]` : '');
+      info.textContent = `${label} ${result.detail}`;
+      div.appendChild(info);
+    }
+  } else if (result.status === 'error') {
+    iconEl.textContent = '\u26A0\uFE0F'; // ⚠️
+    if (result.error) {
+      const err = document.createElement('div');
+      err.className = 'action-error-detail';
+      const kind = result.errorKind ? `[${result.errorKind}] ` : '';
+      err.textContent = `${kind}${result.error}`;
+      div.appendChild(err);
+    }
+  }
+}
+
 function showApplyModal() {
   const actions = collectActions();
   if (actions.length === 0) return;
+
+  preflightResults = {};
 
   const overlay = document.getElementById('modal-overlay');
   const actionsDiv = document.getElementById('modal-actions');
@@ -1404,31 +1513,149 @@ function showApplyModal() {
     div.appendChild(text);
 
     actionsDiv.appendChild(div);
+    renderActionPathLine(div, action, false);
   });
 
   buttonsDiv.innerHTML = '';
+
+  // Left-side controls group: checkboxes + preflight button
+  const leftGroup = document.createElement('div');
+  leftGroup.className = 'modal-left-group';
 
   // Parallel execution checkbox
   const parallelLabel = document.createElement('label');
   parallelLabel.className = 'parallel-label';
   const parallelCheckbox = document.createElement('input');
   parallelCheckbox.type = 'checkbox';
-  parallelCheckbox.id = 'parallel-checkbox';
   parallelLabel.appendChild(parallelCheckbox);
-  parallelLabel.appendChild(document.createTextNode('\u00A0Parallel execution'));
+  parallelLabel.appendChild(document.createTextNode('\u00A0Parallel'));
   parallelLabel.title = 'Run actions concurrently: all adds first (barrier), then all removes. Max 1 action per server at a time.';
+  leftGroup.appendChild(parallelLabel);
+
+  // Show path details checkbox — tagged so we can preserve it across the exec phase.
+  const showPathsLabel = document.createElement('label');
+  showPathsLabel.className = 'parallel-label show-paths-label';
+  const showPathsCheckbox = document.createElement('input');
+  showPathsCheckbox.type = 'checkbox';
+  showPathsLabel.appendChild(showPathsCheckbox);
+  showPathsLabel.appendChild(document.createTextNode('\u00A0Show path details'));
+  showPathsLabel.title = 'Show the authorized_keys file for every action, even standard ~/.ssh/authorized_keys';
+  // The onchange closure captures `actions`, which is the same array passed to executeActions,
+  // so this keeps working after the Confirm button is replaced with Close.
+  showPathsCheckbox.onchange = () => {
+    const showAll = showPathsCheckbox.checked;
+    actions.forEach((action, i) => {
+      const div = document.getElementById(`action-${i}`);
+      if (div) renderActionPathLine(div, action, showAll);
+    });
+  };
+  leftGroup.appendChild(showPathsLabel);
+
+  // Timestamp of the most recent successful preflight (ms since epoch).
+  // Used to skip auto-preflight on Confirm if one ran very recently.
+  let lastPreflightAt = 0;
+  const PREFLIGHT_FRESHNESS_MS = 5000;
+
+  // Shared preflight runner — updates DOM icons and populates preflightResults.
+  // Returns the results array, or null on network/error failure.
+  async function runPreflight() {
+    // Clear current icons (or keep them as hourglass while running)
+    actions.forEach((_, i) => {
+      const div = document.getElementById(`action-${i}`);
+      if (div) renderActionResult(div, null);
+    });
+    try {
+      const resp = await fetch('/api/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actions, profile: currentProfile }),
+      });
+      const { results } = await resp.json();
+      preflightResults = {};
+      for (const r of results) {
+        preflightResults[r.index] = r;
+        const div = document.getElementById(`action-${r.index}`);
+        if (div) renderActionResult(div, r);
+      }
+      lastPreflightAt = Date.now();
+      return results;
+    } catch (err) {
+      alert(`Preflight failed: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  // Lock/unlock all footer buttons during an in-flight preflight. We also block the
+  // Cancel button so the modal can't be closed mid-request — otherwise the late preflight
+  // response would race with a re-opened modal and show in the wrong state.
+  const setFooterLocked = (locked) => {
+    preflightBtn.disabled = locked;
+    confirmBtn.disabled = locked;
+    cancelBtn.disabled = locked;
+  };
+
+  // Preflight button — manual dry-run for user-initiated pre-checks
+  const preflightBtn = document.createElement('button');
+  preflightBtn.className = 'btn btn-sm';
+  preflightBtn.textContent = 'Preflight';
+  preflightBtn.title = 'Dry-run on each server: verify paths and key presence without making changes';
+  preflightBtn.onclick = async () => {
+    setFooterLocked(true);
+    preflightBtn.textContent = 'Checking...';
+    await runPreflight();
+    preflightBtn.textContent = 'Preflight';
+    setFooterLocked(false);
+  };
+  leftGroup.appendChild(preflightBtn);
 
   const confirmBtn = document.createElement('button');
   confirmBtn.className = 'btn btn-primary';
   confirmBtn.textContent = 'Confirm';
-  confirmBtn.onclick = () => executeActions(actions, parallelCheckbox.checked);
+  confirmBtn.onclick = async () => {
+    // If a manual preflight ran very recently, reuse its results instead of running again.
+    // This preserves the "Preflight → visually confirm → Confirm" habit without a round-trip,
+    // at the cost of a tiny TOCTOU window (the runtime integrity check still catches drift).
+    let results;
+    const sinceLast = Date.now() - lastPreflightAt;
+    if (lastPreflightAt > 0 && sinceLast < PREFLIGHT_FRESHNESS_MS) {
+      results = Object.values(preflightResults);
+    } else {
+      setFooterLocked(true);
+      const originalLabel = confirmBtn.textContent;
+      confirmBtn.textContent = 'Checking...';
+      results = await runPreflight();
+      confirmBtn.textContent = originalLabel;
+      setFooterLocked(false);
+      if (!results) {
+        return; // preflight itself failed — alert already shown
+      }
+    }
+
+    const errored = results.filter(r => r.status === 'error');
+    if (errored.length > 0) {
+      const lines = errored.map(r => {
+        const a = actions[r.index];
+        const act = a.type === 'add' ? `add to ${a.username}@${a.serverAlias}` : `remove from ${a.username}@${a.serverAlias}`;
+        return `  • ${act}: [${r.errorKind}] ${r.error}`;
+      });
+      const proceed = confirm(
+        `Preflight reported ${errored.length} issue(s):\n\n${lines.join('\n')}\n\nProceed anyway?`
+      );
+      if (!proceed) {
+        confirmBtn.disabled = false;
+        return;
+      }
+    }
+    // confirmBtn stays disabled — executeActions replaces the footer entirely
+    executeActions(actions, parallelCheckbox.checked);
+  };
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'btn';
   cancelBtn.textContent = 'Cancel';
   cancelBtn.onclick = () => overlay.classList.add('hidden');
 
-  buttonsDiv.appendChild(parallelLabel);
+  buttonsDiv.appendChild(leftGroup);
   buttonsDiv.appendChild(confirmBtn);
   buttonsDiv.appendChild(cancelBtn);
 
@@ -1438,7 +1665,15 @@ function showApplyModal() {
 async function executeActions(actions, parallel = false) {
   const buttonsDiv = document.getElementById('modal-buttons');
   const actionsDiv = document.getElementById('modal-actions');
+
+  // Preserve the "Show path details" label across the exec phase — it still toggles
+  // per-action path visibility (doesn't affect the commit itself).
+  const showPathsLabel = buttonsDiv.querySelector('.show-paths-label');
   buttonsDiv.innerHTML = '';
+  if (showPathsLabel) {
+    showPathsLabel.style.marginRight = 'auto'; // push the close button to the right
+    buttonsDiv.appendChild(showPathsLabel);
+  }
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'btn';
@@ -1479,24 +1714,48 @@ async function executeActions(actions, parallel = false) {
           continue;
         }
 
+        // Halt signal — any error stops the process. Remaining actions are skipped.
+        if (data.phase === 'halted') {
+          const skippedIndices = data.skipped || [];
+          // Mark each skipped action with a "stopped" icon
+          for (const idx of skippedIndices) {
+            const el = document.getElementById(`action-${idx}`);
+            if (!el) continue;
+            const iconEl = el.querySelector('.action-icon');
+            if (iconEl) iconEl.textContent = '\u23F8\uFE0F'; // ⏸️ pause = skipped
+            const skipMark = document.createElement('div');
+            skipMark.className = 'action-error-detail action-skip-detail';
+            skipMark.textContent = 'skipped (halted due to earlier error)';
+            el.appendChild(skipMark);
+          }
+          const notice = document.createElement('div');
+          notice.className = 'phase-barrier-notice phase-halted-notice';
+          notice.textContent = `Halted: ${data.errors} error(s), ${skippedIndices.length} action(s) skipped`;
+          actionsDiv.appendChild(notice);
+          actionsDiv.scrollTop = actionsDiv.scrollHeight;
+          continue;
+        }
+
         const el = document.getElementById(`action-${data.index}`);
         if (!el) continue;
 
-        const iconEl = el.querySelector('.action-icon');
-
         if (data.status === 'running') {
-          iconEl.innerHTML = '<span class="spinner"></span>';
+          renderActionResult(el, { status: 'running' });
           // Only scroll in sequential mode to avoid jumpy behavior
           if (!parallel) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else if (data.status === 'success') {
-          iconEl.textContent = '\u2705'; // green check
-        } else if (data.status === 'error') {
-          iconEl.textContent = '\u274C'; // red X
-          const errSpan = document.createElement('span');
-          errSpan.className = 'action-error';
-          errSpan.textContent = ' error';
-          errSpan.title = data.error || 'Unknown error';
-          el.appendChild(errSpan);
+          continue;
+        }
+        if (data.status === 'success') {
+          renderActionResult(el, { status: 'success' });
+          continue;
+        }
+        if (data.status === 'info') {
+          renderActionResult(el, { status: 'info', infoKind: data.infoKind, detail: data.detail });
+          continue;
+        }
+        if (data.status === 'error') {
+          renderActionResult(el, { status: 'error', error: data.error, errorKind: data.errorKind });
+          continue;
         }
       }
     }
